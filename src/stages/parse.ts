@@ -2,26 +2,36 @@
  * Parse Stage - Extract structured Goal from raw input using LLM
  */
 
-import { z } from 'zod';
-import type { Goal } from '../types/index.ts';
-import type { LLMClient } from '../llm/client.ts';
+import { z } from "zod";
+import type { Goal, LLMClient } from "../types/index.ts";
 
 const GoalParseSchema = z.object({
-  description: z.string().describe('Clear, concise description of the goal'),
-  successCriteria: z.array(z.string()).describe('Specific, measurable outcomes'),
-  context: z.string().optional().describe('Background information and constraints'),
-  priority: z.enum(['low', 'medium', 'high', 'urgent']).describe('Priority level'),
+	description: z.string().describe("Clear, concise description of the goal"),
+	successCriteria: z
+		.array(z.string())
+		.describe("Specific, measurable outcomes"),
+	context: z
+		.string()
+		.optional()
+		.describe("Background information and constraints"),
+	priority: z
+		.enum(["low", "medium", "high", "urgent"])
+		.describe("Priority level"),
 });
 
 export interface ParseStage {
-  run(input: string, goalId: string): Promise<Goal>;
+	run(input: string, goalId: string): Promise<Goal>;
 }
 
 export class LLMParseStage implements ParseStage {
-  constructor(private llm: LLMClient) {}
+	#llm: LLMClient;
 
-  async run(input: string, goalId: string): Promise<Goal> {
-    const prompt = `Analyze this goal description and extract structured information.
+	constructor(llm: LLMClient) {
+		this.#llm = llm;
+	}
+
+	async run(input: string, goalId: string): Promise<Goal> {
+		const prompt = `Analyze this goal description and extract structured information.
 
 Input:
 """
@@ -36,28 +46,35 @@ Extract:
 
 Respond with structured data.`;
 
-    const result = await this.llm.generate('parse', prompt, {
-      schema: GoalParseSchema
-    });
+		const result = await this.#llm.generate("parse", prompt, {
+			schema: GoalParseSchema,
+		});
 
-    const parsed = JSON.parse(result.text);
-    const validated = GoalParseSchema.parse(parsed);
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(result.text);
+		} catch {
+			throw new Error(
+				`Parse stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
+			);
+		}
+		const validated = GoalParseSchema.parse(parsed);
 
-    return {
-      id: goalId,
-      source: 'filesystem',
-      sourceId: goalId,
-      description: validated.description,
-      successCriteria: validated.successCriteria,
-      context: validated.context,
-      priority: validated.priority,
-      status: 'pending',
-      createdBy: 'agentos',
-      createdAt: new Date().toISOString(),
-      metadata: {
-        parsedAt: new Date().toISOString(),
-        inputLength: input.length
-      }
-    };
-  }
+		return {
+			id: goalId,
+			source: "filesystem",
+			sourceId: goalId,
+			description: validated.description,
+			successCriteria: validated.successCriteria,
+			context: validated.context,
+			priority: validated.priority,
+			status: "pending",
+			createdBy: "agentos",
+			createdAt: new Date().toISOString(),
+			metadata: {
+				parsedAt: new Date().toISOString(),
+				inputLength: input.length,
+			},
+		};
+	}
 }

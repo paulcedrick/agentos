@@ -1,54 +1,46 @@
-import { Task, TaskStatus } from '../types';
+import type { Task, TaskStatus } from "../types/index.ts";
 
 export class StateMachine {
-  private transitions: Map<TaskStatus, TaskStatus[]> = new Map([
-    ['pending', ['claimed']],
-    ['claimed', ['in_progress', 'failed']],
-    ['in_progress', ['blocked', 'complete', 'failed']],
-    ['blocked', ['in_progress', 'failed']],
-    ['complete', []],
-    ['failed', ['pending']]  // Can retry
-  ]);
+	#transitions: Map<TaskStatus, TaskStatus[]> = new Map([
+		["pending", ["claimed"]],
+		["claimed", ["in_progress", "failed"]],
+		["in_progress", ["blocked", "completed", "failed"]],
+		["blocked", ["in_progress", "failed"]],
+		["completed", []],
+		["failed", ["pending"]], // Can retry
+	]);
 
-  canTransition(from: TaskStatus, to: TaskStatus): boolean {
-    const allowed = this.transitions.get(from);
-    return allowed ? allowed.includes(to) : false;
-  }
+	canTransition(from: TaskStatus, to: TaskStatus): boolean {
+		const allowed = this.#transitions.get(from);
+		return allowed ? allowed.includes(to) : false;
+	}
 
-  transition(task: Task, newStatus: TaskStatus): Result {
-    if (!this.canTransition(task.status, newStatus)) {
-      return {
-        success: false,
-        error: `Cannot transition ${task.status} → ${newStatus}`
-      };
-    }
+	transition(task: Task, newStatus: TaskStatus): Result {
+		if (!this.canTransition(task.status, newStatus)) {
+			return {
+				success: false,
+				error: `Cannot transition ${task.status} → ${newStatus}`,
+			};
+		}
 
-    const oldStatus = task.status;
-    task.status = newStatus;
-    task.metadata.lastTransitionAt = new Date().toISOString();
-    task.metadata.transitionHistory = task.metadata.transitionHistory || [];
-    task.metadata.transitionHistory.push({
-      from: oldStatus,
-      to: newStatus,
-      at: new Date().toISOString()
-    });
+		task.status = newStatus;
 
-    if (newStatus === 'claimed') {
-      task.claimedAt = new Date();
-    }
-    if (newStatus === 'complete' || newStatus === 'failed') {
-      task.completedAt = new Date();
-    }
+		if (newStatus === "claimed") {
+			task.claimedAt = new Date().toISOString();
+		}
+		if (newStatus === "completed" || newStatus === "failed") {
+			task.completedAt = new Date().toISOString();
+		}
 
-    return { success: true };
-  }
+		return { success: true };
+	}
 
-  getAllowedTransitions(status: TaskStatus): TaskStatus[] {
-    return this.transitions.get(status) || [];
-  }
+	getAllowedTransitions(status: TaskStatus): TaskStatus[] {
+		return this.#transitions.get(status) || [];
+	}
 }
 
 interface Result {
-  success: boolean;
-  error?: string;
+	success: boolean;
+	error?: string;
 }

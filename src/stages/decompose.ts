@@ -2,39 +2,60 @@
  * Decompose Stage - Break Goal into executable Tasks using LLM
  */
 
-import { z } from 'zod';
-import type { Goal, Task } from '../types/index.ts';
-import type { LLMClient } from '../llm/client.ts';
+import { z } from "zod";
+import type { Goal, Task, LLMClient } from "../types/index.ts";
 
 const TaskSchema = z.object({
-  description: z.string().describe('Specific, actionable task description'),
-  type: z.enum(['research', 'write', 'code', 'design', 'review', 'analysis', 'test', 'implement']),
-  requiredCapabilities: z.array(z.string()).describe('Skills needed (e.g., ["research", "writing"])'),
-  estimatedEffort: z.string().describe('Time estimate (e.g., "2 hours", "1 day")'),
-  dependencies: z.array(z.number()).optional().describe('Indices of tasks this depends on'),
+	description: z.string().describe("Specific, actionable task description"),
+	type: z.enum([
+		"research",
+		"write",
+		"code",
+		"design",
+		"review",
+		"analysis",
+		"test",
+		"implement",
+	]),
+	requiredCapabilities: z
+		.array(z.string())
+		.describe('Skills needed (e.g., ["research", "writing"])'),
+	estimatedEffort: z
+		.string()
+		.describe('Time estimate (e.g., "2 hours", "1 day")'),
+	dependencies: z
+		.array(z.number())
+		.optional()
+		.describe("Indices of tasks this depends on"),
 });
 
 const DecompositionSchema = z.object({
-  tasks: z.array(TaskSchema).min(1).max(10),
-  strategy: z.string().describe('Brief explanation of the decomposition approach'),
+	tasks: z.array(TaskSchema).min(1).max(10),
+	strategy: z
+		.string()
+		.describe("Brief explanation of the decomposition approach"),
 });
 
 export interface DecomposeStage {
-  run(goal: Goal): Promise<Task[]>;
+	run(goal: Goal): Promise<Task[]>;
 }
 
 export class LLMDecomposeStage implements DecomposeStage {
-  constructor(private llm: LLMClient) {}
+	#llm: LLMClient;
 
-  async run(goal: Goal): Promise<Task[]> {
-    const prompt = `Decompose this goal into executable tasks.
+	constructor(llm: LLMClient) {
+		this.#llm = llm;
+	}
+
+	async run(goal: Goal): Promise<Task[]> {
+		const prompt = `Decompose this goal into executable tasks.
 
 Goal: ${goal.description}
 
 Success Criteria:
-${goal.successCriteria.map(c => `- ${c}`).join('\n')}
+${goal.successCriteria.map((c) => `- ${c}`).join("\n")}
 
-${goal.context ? `Context:\n${goal.context}\n` : ''}
+${goal.context ? `Context:\n${goal.context}\n` : ""}
 
 Break this down into 2-7 specific, actionable tasks. Each task should:
 - Be concrete and completable
@@ -44,29 +65,37 @@ Break this down into 2-7 specific, actionable tasks. Each task should:
 
 Strategy: Start with research/planning tasks, then implementation, then review.`;
 
-    const result = await this.llm.generate('decompose', prompt, {
-      schema: DecompositionSchema
-    });
+		const result = await this.#llm.generate("decompose", prompt, {
+			schema: DecompositionSchema,
+		});
 
-    const parsed = JSON.parse(result.text);
-    const validated = DecompositionSchema.parse(parsed);
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(result.text);
+		} catch {
+			throw new Error(
+				`Decompose stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
+			);
+		}
+		const validated = DecompositionSchema.parse(parsed);
 
-    // Convert to Task objects with IDs
-    const tasks: Task[] = validated.tasks.map((t, index) => ({
-      id: `${goal.id}-task-${index + 1}`,
-      goalId: goal.id,
-      description: t.description,
-      type: t.type,
-      requiredCapabilities: t.requiredCapabilities,
-      estimatedEffort: t.estimatedEffort,
-      status: 'pending',
-      dependencies: t.dependencies?.map(d => `${goal.id}-task-${d + 1}`) || [],
-      metadata: {
-        rationale: validated.strategy,
-        order: index
-      }
-    }));
+		// Convert to Task objects with IDs
+		const tasks: Task[] = validated.tasks.map((t, index) => ({
+			id: `${goal.id}-task-${index + 1}`,
+			goalId: goal.id,
+			description: t.description,
+			type: t.type,
+			requiredCapabilities: t.requiredCapabilities,
+			estimatedEffort: t.estimatedEffort,
+			status: "pending",
+			dependencies:
+				t.dependencies?.map((d) => `${goal.id}-task-${d + 1}`) || [],
+			metadata: {
+				rationale: validated.strategy,
+				order: index,
+			},
+		}));
 
-    return tasks;
-  }
+		return tasks;
+	}
 }
