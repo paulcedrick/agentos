@@ -98,10 +98,10 @@ git checkout margo/pipeline-orchestrator
 - [x] Pipeline orchestrator (Margo)
 - [x] Stage interfaces (Margo)
 
-### Phase 2: LLM Integration ✅ COMPLETE (v1 - mocks)
-- [x] LLM Client structure (Mori) - **needs real SDK wiring**
+### Phase 2: LLM Integration ✅ COMPLETE (v2 - real APIs)
+- [x] LLM Client structure (Mori) - **real API wiring done**
 - [x] Cost tracker (Mori)
-- [x] Fallback mechanism framework
+- [x] OpenAI-compatible provider support (Moonshot, MiniMax, Zhipu)
 
 ### Phase 3: Adapters ✅ COMPLETE (v1 - filesystem)
 - [x] Filesystem adapter (Mori)
