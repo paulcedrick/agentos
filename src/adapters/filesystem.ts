@@ -125,4 +125,23 @@ export class FileSystemAdapter implements AgentOSAdapter {
   async notify(recipients: string[], message: string): Promise<void> {
     console.log(`[NOTIFY] ${recipients.join(', ')}: ${message}`);
   }
+
+  // Adapter interface methods expected by Pipeline
+  async fetchInputs(): Promise<string[]> {
+    const goals = await this.pollGoals();
+    return goals.map(g => g.metadata?.file as string || '').filter(Boolean);
+  }
+
+  async report(id: string, status: string, message?: string): Promise<void> {
+    // Try to update as goal first, fall back to task
+    await this.updateGoal(id, status, message);
+  }
+
+  async notify(message: string): Promise<void> {
+    console.log(`[NOTIFY] ${message}`);
+  }
+
+  async claim(id: string, agentId: string): Promise<boolean> {
+    return this.claimTask(id, agentId);
+  }
 }
