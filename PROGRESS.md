@@ -74,10 +74,10 @@ git checkout margo/pipeline-orchestrator
 ## Phase Progress
 
 ### Phase 1: Foundation
-- [ ] Core types and interfaces
+- [x] Core types and interfaces (Mori)
 - [ ] Base adapter interface
 - [ ] Configuration system
-- [ ] Basic CLI
+- [x] Basic CLI (Mori)
 
 ### Phase 2: Adapters
 - [ ] Filesystem adapter (goals as .md files)

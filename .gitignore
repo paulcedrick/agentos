@@ -1,34 +1,6 @@
-# Dependencies
 node_modules/
-
-# Build output
-*.js
-*.js.map
-*.d.ts
-
-# Data files
-data/agentos.db
-*.db
-*.sqlite
-
-# Config with secrets
-config/agentos.json
-!config/agentos.example.json
-
-# Environment
+dist/
+*.log
 .env
 .env.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
 .DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/

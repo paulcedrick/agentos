@@ -1,26 +1,17 @@
 {
   "name": "agentos",
   "version": "0.1.0",
-  "description": "Agent Operating System - Make AI agents proactive",
-  "module": "src/index.ts",
+  "description": "Agent Operating System - makes agents proactive",
   "type": "module",
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun run --watch src/index.ts",
-    "test": "bun test",
-    "db:migrate": "bun run src/db/migrate.ts"
+  "bin": {
+    "agentos": "./dist/cli.js"
   },
-  "dependencies": {
-    "ai": "^3.0.0",
-    "@ai-sdk/moonshot": "^1.0.0",
-    "@ai-sdk/minimax": "^1.0.0",
-    "@ai-sdk/zhipu": "^1.0.0",
-    "zod": "^3.22.0"
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist --minify",
+    "start": "bun run src/cli.ts",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
   }
 }
