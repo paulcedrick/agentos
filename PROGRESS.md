@@ -63,49 +63,62 @@ git checkout margo/pipeline-orchestrator
 
 ## Sprint Log
 
-### [Current Sprint]
+### [Current Sprint - COMPLETED]
 
 | Date | Agent | Task | Status | Notes |
 |------|-------|------|--------|-------|
 | 2025-01-14 | Mori | CLI + types | ✅ Merged | Initial scaffold |
-| 2025-01-14 | Margo | State machine | 🔄 PR | Deterministic task lifecycle |
-| 2025-01-14 | Margo | Pipeline orchestrator | 🔄 PR | Main loop structure |
-| 2025-01-14 | Margo | Stage interfaces | 🔄 PR | Parse, decompose, clarify, execute |
-| 2025-01-14 | Mori | LLM Client | ⏳ Todo | Needs: 3 providers, cost tracker, filesystem adapter |
+| 2025-01-14 | Margo | State machine | ✅ Merged | Deterministic task lifecycle |
+| 2025-01-14 | Margo | Pipeline orchestrator | ✅ Merged | Main loop structure |
+| 2025-01-14 | Margo | Stage interfaces | ✅ Merged | Parse, decompose, clarify, execute |
+| 2025-01-14 | Mori | LLM Client | ✅ Merged | Multi-provider with mock responses |
+| 2025-01-14 | Mori | Cost Tracker | ✅ Merged | SQLite with budget alerts |
+| 2025-01-14 | Mori | FileSystem Adapter | ✅ Merged | Frontmatter parsing, lock-based claiming |
+
+### [Next Sprint]
+
+| Date | Agent | Task | Status | Notes |
+|------|-------|------|--------|-------|
+| TBD | Mori | Provider SDK wiring | ⏳ Todo | Real API calls instead of mocks |
+| TBD | Margo | Parse stage implementation | ⏳ Todo | Wire to LLMClient |
+| TBD | Margo | Decompose stage implementation | ⏳ Todo | Wire to LLMClient |
+| TBD | Margo | Clarify stage implementation | ⏳ Todo | Wire to LLMClient |
+| TBD | Margo | Execute stage implementation | ⏳ Todo | Wire to LLMClient |
+| TBD | Both | Integration test | ⏳ Todo | End-to-end with file-based goals |
 
 ---
 
 ## Phase Progress
 
-### Phase 1: Foundation
+### Phase 1: Foundation ✅ COMPLETE
 - [x] Core types and interfaces (Mori + Margo)
-- [x] Base adapter interface (in types)
 - [x] Configuration system (Mori)
 - [x] Basic CLI (Mori)
-- [x] State machine (Margo - in review)
-- [x] Pipeline orchestrator (Margo - in review)
-- [x] Stage interfaces (Margo - in review)
+- [x] State machine (Margo)
+- [x] Pipeline orchestrator (Margo)
+- [x] Stage interfaces (Margo)
 
-### Phase 2: LLM Integration (Mori)
-- [ ] LLM Client with 3 providers (Moonshot, MiniMax, Zhipu)
-- [ ] Cost tracker (SQLite)
-- [ ] Fallback mechanism
+### Phase 2: LLM Integration ✅ COMPLETE (v1 - mocks)
+- [x] LLM Client structure (Mori) - **needs real SDK wiring**
+- [x] Cost tracker (Mori)
+- [x] Fallback mechanism framework
 
-### Phase 3: Adapters (Mori)
-- [ ] Filesystem adapter (goals as .md files)
+### Phase 3: Adapters ✅ COMPLETE (v1 - filesystem)
+- [x] Filesystem adapter (Mori)
 - [ ] PXLabz adapter (future)
 - [ ] Webhook adapter (future)
 
-### Phase 4: Pipeline Stages (Margo - pending Mori's LLMClient)
-- [ ] Parse stage implementation
-- [ ] Decompose stage implementation  
-- [ ] Clarify stage implementation
-- [ ] Execute stage implementation
+### Phase 4: Pipeline Stage Implementations ⏳ NEXT
+- [ ] Parse stage - wire to LLMClient
+- [ ] Decompose stage - wire to LLMClient
+- [ ] Clarify stage - wire to LLMClient
+- [ ] Execute stage - wire to LLMClient
 
-### Phase 5: Integration
-- [ ] Wire pipeline to LLMClient
-- [ ] Wire adapter to pipeline
-- [ ] End-to-end test
+### Phase 5: Integration & Real APIs ⏳ NEXT
+- [ ] Wire real LLM providers (Moonshot, MiniMax, Zhipu)
+- [ ] End-to-end test with file-based goals
+- [ ] Budget alert webhooks
+- [ ] Documentation
 
 ---
 
