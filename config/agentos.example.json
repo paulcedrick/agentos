@@ -131,6 +131,12 @@
     "filesystem": {
       "enabled": true,
       "baseDir": "~/.agentos/goals"
+    },
+    "discord": {
+      "enabled": true,
+      "botToken": "${DISCORD_BOT_TOKEN}",
+      "taskChannelId": "1471428005820891247",
+      "guildId": "1362670336637800509"
     }
   },
   

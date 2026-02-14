@@ -47,7 +47,15 @@ export class ConfigLoader {
       }
     }
     
-    // Validate models
+    // Validate Discord adapter if enabled
+    if (config.adapters.discord?.enabled) {
+      if (!config.adapters.discord.botToken) {
+        throw new Error('Discord adapter enabled but botToken is missing');
+      }
+      if (!config.adapters.discord.taskChannelId) {
+        throw new Error('Discord adapter enabled but taskChannelId is missing');
+      }
+    }
     if (!config.models || Object.keys(config.models).length === 0) {
       throw new Error('Config must have at least one model defined');
     }
