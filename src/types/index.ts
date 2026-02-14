@@ -1,6 +1,5 @@
 /**
- * AgentOS Core Types
- * Adapter-agnostic type definitions for the Agent Operating System
+ * AgentOS Core Types with Multi-Team Support
  */
 
 // Goal: The top-level objective
@@ -8,6 +7,7 @@ export interface Goal {
   id: string;
   source: string;
   sourceId: string;
+  teamId: string;  // NEW: Which team this goal belongs to
   description: string;
   successCriteria: string[];
   context?: string;
@@ -23,23 +23,26 @@ export type GoalStatus =
   | 'pending' | 'decomposing' | 'in_progress' | 'blocked' 
   | 'review' | 'completed' | 'failed';
 
+// Task: Decomposed work unit
 export interface Task {
   id: string;
   goalId: string;
+  teamId: string;  // NEW: Inherited from goal
   description: string;
   type: TaskType;
   status: TaskStatus;
   requiredCapabilities: string[];
-  assignedTo?: string;
+  assignedTo?: string;  // Agent ID
   claimedAt?: string;
   completedAt?: string;
   result?: TaskResult;
   clarifications?: Clarification[];
   parentId?: string;
   order: number;
+  dependencies: string[];
 }
 
-export type TaskType = 'research' | 'code' | 'write' | 'review' | 'email' | 'admin' | 'test';
+export type TaskType = 'research' | 'code' | 'write' | 'review' | 'email' | 'admin' | 'test' | 'design';
 export type TaskStatus = 'pending' | 'claimed' | 'in_progress' | 'blocked' | 'review' | 'completed' | 'failed';
 
 export interface TaskResult {
@@ -50,76 +53,68 @@ export interface TaskResult {
 }
 
 export interface Artifact {
-  type: 'file' | 'url' | 'pr' | 'email' | 'data';
+  type: 'file' | 'url' | 'document' | 'code';
   name: string;
   location: string;
-  mimeType?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Clarification {
   id: string;
-  taskId: string;
   question: string;
   answer?: string;
-  askedBy: string;
-  askedAt: string;
   answeredBy?: string;
   answeredAt?: string;
+  isBlocking: boolean;
 }
 
-export interface Agent {
+// NEW: Agent Definition
+export interface AgentConfig {
   id: string;
   name: string;
   capabilities: string[];
-  tools: string[];
-  maxParallel: number;
-  execute: ExecuteFn;
+  discordId?: string;
+  teams: string[];  // Which teams this agent belongs to
+  maxParallelTasks: number;
+  isActive: boolean;
 }
 
-export type ExecuteFn = (task: Task, context: ExecutionContext) => Promise<TaskResult>;
-
-export interface ExecutionContext {
-  goal: Goal;
-  onProgress: (message: string) => void;
-  onBlock: (question: string) => Promise<string>;
-  onComplete: (result: TaskResult) => void;
-  onError: (error: Error) => void;
-}
-
-export interface AgentOSAdapter {
+// NEW: Team Definition
+export interface TeamConfig {
+  id: string;
   name: string;
-  pollGoals(): Promise<Goal[]>;
-  claimTask(taskId: string, agentId: string): Promise<boolean>;
-  updateGoal(goalId: string, status: GoalStatus, message?: string): Promise<void>;
-  updateTask(taskId: string, status: TaskStatus, message?: string): Promise<void>;
-  requestClarification(goalId: string, question: string): Promise<void>;
-  notify(recipients: string[], message: string): Promise<void>;
+  agents: string[];  // Agent IDs belonging to this team
+  goalsDir: string;  // Where this team's goals are stored
+  channels?: string[];  // Discord channels for this team
 }
 
-export interface AgentOSConfig {
-  models: ModelConfig;
-  pipeline: PipelineConfig;
-  costTracking: CostTrackingConfig;
-  adapters: Record<string, AdapterConfig>;
-  pollingIntervalMs: number;
-}
-
+// Model Configuration
 export interface ModelConfig {
-  [alias: string]: {
-    provider: string;
-    modelId: string;
-    baseUrl?: string;
-    apiKeyEnv: string;
-    pricing: { inputPer1k: number; outputPer1k: number };
+  provider: 'moonshot' | 'minimax' | 'zhipu';
+  package: string;
+  modelId: string;
+  baseUrl?: string;
+  apiKeyEnv: string;
+  pricing: {
+    inputPer1k: number;
+    outputPer1k: number;
   };
 }
 
+export interface PipelineStageConfig {
+  primary: string;
+  fallback?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
+}
+
 export interface PipelineConfig {
-  [stage: string]: {
-    primary: string;
-    fallback?: string;
-    timeoutMs: number;
-    maxRetries: number;
+  parse: PipelineStageConfig;
+  decompose: PipelineStageConfig;
+  clarify: PipelineStageConfig;
+  execute: PipelineStageConfig & {
+    default: string;
+    byType?: Record<string, string>;
   };
 }
 
@@ -131,7 +126,33 @@ export interface CostTrackingConfig {
   webhookUrl?: string;
 }
 
-export interface AdapterConfig {
+export interface FileSystemAdapterConfig {
   enabled: boolean;
-  [key: string]: unknown;
+  baseDir: string;  // Base directory, teams will be subdirectories
+}
+
+export interface Config {
+  // NEW: Agent and Team definitions
+  agents: Record<string, AgentConfig>;
+  teams: Record<string, TeamConfig>;
+  
+  // Existing configs
+  models: Record<string, ModelConfig>;
+  pipeline: PipelineConfig;
+  costTracking: CostTrackingConfig;
+  adapters: {
+    filesystem: FileSystemAdapterConfig;
+  };
+  pollingIntervalMs: number;
+}
+
+// Adapter Interface
+export interface Adapter {
+  name: string;
+  initialize(): Promise<void>;
+  fetchInputs(teamId?: string): Promise<string[]>;  // NEW: team filter
+  claim(inputId: string, agentId: string): Promise<boolean>;
+  report(inputId: string, status: string, message: string): Promise<void>;
+  notify(message: string): Promise<void>;
+  getGoalsDir(teamId: string): string;  // NEW: get team-specific directory
 }

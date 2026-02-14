@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
 /**
- * AgentOS - Entry Point
- * 
- * Agent Operating System for autonomous AI agents.
+ * AgentOS - Entry Point with Multi-Team Support
  */
 
 import { ConfigLoader } from './config/config.ts';
@@ -14,7 +12,10 @@ import { Logger } from './utils/logger.ts';
 const logger = new Logger('AgentOS');
 
 async function main() {
-  logger.info('AgentOS Starting...');
+  // Get team from environment or process all teams
+  const teamId = process.env.AGENTOS_TEAM;
+  
+  logger.info('AgentOS Starting...', teamId ? { team: teamId } : { mode: 'all-teams' });
   
   try {
     // Load configuration
@@ -22,15 +23,27 @@ async function main() {
     const config = await ConfigLoader.load(configPath);
     
     logger.info('Configuration loaded', {
-      models: Object.keys(config.models),
-      stages: Object.keys(config.pipeline)
+      agents: Object.keys(config.agents),
+      teams: Object.keys(config.teams),
+      models: Object.keys(config.models)
     });
     
-    // Initialize adapter (filesystem for now)
+    // Validate team if specified
+    if (teamId && !config.teams[teamId]) {
+      throw new Error(`Unknown team: ${teamId}. Available: ${Object.keys(config.teams).join(', ')}`);
+    }
+    
+    // Initialize adapter with config
     const adapter = new FileSystemAdapter({
-      goalsDir: config.adapters.filesystem.goalsDir
+      baseDir: config.adapters.filesystem.baseDir
     });
+    adapter.setConfig(config);
     await adapter.initialize();
+    
+    logger.info('Adapter initialized', { 
+      baseDir: config.adapters.filesystem.baseDir,
+      teams: Object.entries(config.teams).map(([id, t]) => ({ id, dir: t.goalsDir }))
+    });
     
     // Initialize LLM client
     const llm = createLLMClient(config.models, config.pipeline);
@@ -38,13 +51,13 @@ async function main() {
     // Initialize pipeline
     const pipeline = new Pipeline(config, adapter, llm);
     
-    logger.info('AgentOS initialized');
-    logger.info('Starting main loop...');
+    logger.info('AgentOS initialized successfully');
+    logger.info(teamId ? `Processing team: ${teamId}` : 'Processing all teams');
     
     // Main loop
     while (true) {
       try {
-        await pipeline.runCycle();
+        await pipeline.runCycle(teamId);
       } catch (error) {
         logger.error('Pipeline cycle error', error);
       }
