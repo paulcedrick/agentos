@@ -11,10 +11,11 @@ Goal → Parse → Decompose → Match Capabilities → Execute → Clarify → 
 ```
 
 ## Adapters (Pluggable)
-- PXLabz Adapter
-- Email Adapter
-- FileSystem Adapter  
-- Webhook Adapter
+- FileSystem Adapter ✅
+- Discord Adapter ✅
+- PXLabz Adapter (future)
+- Email Adapter (future)
+- Webhook Adapter (future)
 - GitHub Adapter (future)
 - Notion Adapter (future)
 
@@ -74,6 +75,7 @@ git checkout margo/pipeline-orchestrator
 | 2025-01-14 | Mori | FileSystem Adapter | ✅ Merged | Frontmatter, lock-based |
 | 2025-01-14 | Margo | Stage implementations | ✅ Merged | Parse, Decompose, Clarify, Execute |
 | 2025-01-14 | Margo | Multi-team support | ✅ Merged | Agent config, team routing |
+| 2025-01-14 | Margo | Discord adapter | ✅ Merged | Posts tasks, mentions users |
 
 ---
 
@@ -111,12 +113,19 @@ git checkout margo/pipeline-orchestrator
 - [x] Agent capability matching in pipeline
 - [x] AGENTOS_TEAM env var for team filtering
 
-### Phase 7: Ready for Production Testing ⏳ NEXT
+### Phase 8: Discord Integration ✅ COMPLETE
+- [x] Discord adapter using discord.js
+- [x] Post tasks to channel with @mentions
+- [x] Create thread per task
+- [x] Adapter switching via AGENTOS_ADAPTER env var
+- [x] Config validation for bot token and channel ID
+
+### Phase 9: Ready for Production Testing ⏳ NEXT
 - [ ] Set API keys (MOONSHOT_API_KEY, MINIMAX_API_KEY, ZHIPU_API_KEY)
+- [ ] Set Discord bot token
 - [ ] Create test goal files for ice-cold team
 - [ ] Create test goal files for fiery-warm team
-- [ ] Run end-to-end with real LLM calls
-- [ ] Validate cost tracking
+- [ ] Run end-to-end with real LLM + Discord
 - [ ] Bug fixes and polish
 
 ---
