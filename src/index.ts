@@ -5,8 +5,11 @@
  * Agent Operating System for autonomous AI agents.
  */
 
-import { ConfigLoader } from './config/config';
-import { Logger } from './utils/logger';
+import { ConfigLoader } from './config/config.ts';
+import { FileSystemAdapter } from './adapters/filesystem.ts';
+import { createLLMClient } from './llm/client.ts';
+import { Pipeline } from './core/pipeline.ts';
+import { Logger } from './utils/logger.ts';
 
 const logger = new Logger('AgentOS');
 
@@ -23,17 +26,43 @@ async function main() {
       stages: Object.keys(config.pipeline)
     });
     
-    // TODO: Initialize adapter
-    // TODO: Initialize pipeline
-    // TODO: Start main loop
+    // Initialize adapter (filesystem for now)
+    const adapter = new FileSystemAdapter({
+      goalsDir: config.adapters.filesystem.goalsDir
+    });
+    await adapter.initialize();
     
-    logger.info('AgentOS initialized successfully');
-    logger.info('Main loop not yet implemented - scaffold only');
+    // Initialize LLM client
+    const llm = createLLMClient(config.models, config.pipeline);
+    
+    // Initialize pipeline
+    const pipeline = new Pipeline(config, adapter, llm);
+    
+    logger.info('AgentOS initialized');
+    logger.info('Starting main loop...');
+    
+    // Main loop
+    while (true) {
+      try {
+        await pipeline.runCycle();
+      } catch (error) {
+        logger.error('Pipeline cycle error', error);
+      }
+      
+      // Wait before next poll
+      const interval = config.pollingIntervalMs || 60000;
+      logger.debug(`Waiting ${interval}ms before next cycle`);
+      await sleep(interval);
+    }
     
   } catch (error) {
     logger.error('Failed to start AgentOS', error);
     process.exit(1);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 main();
