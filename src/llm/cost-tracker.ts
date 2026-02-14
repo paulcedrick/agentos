@@ -25,7 +25,6 @@ export class SQLiteCostTracker implements CostTracker {
         output_tokens INTEGER NOT NULL,
         cost REAL NOT NULL
       );
-      
       CREATE INDEX IF NOT EXISTS idx_costs_timestamp ON costs(timestamp);
       CREATE INDEX IF NOT EXISTS idx_costs_stage ON costs(stage);
       CREATE INDEX IF NOT EXISTS idx_costs_model ON costs(model_alias);
@@ -81,8 +80,7 @@ export class SQLiteCostTracker implements CostTracker {
     byModel: Record<string, number>;
   }> {
     const total = this.db.query(`
-      SELECT COUNT(*) as count, COALESCE(SUM(cost), 0) as total
-      FROM costs
+      SELECT COUNT(*) as count, COALESCE(SUM(cost), 0) as total FROM costs
     `).get() as { count: number; total: number };
 
     const byStage = this.db.query(`
