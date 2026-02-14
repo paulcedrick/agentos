@@ -21,13 +21,43 @@ Goal → Parse → Decompose → Match Capabilities → Execute → Clarify → 
 ## Team
 | Agent | Capabilities | Workspace |
 |-------|-------------|-----------|
-| Margo | architecture, research, task_decomposition, strategy | ~/project/agent-os/margo-workspace |
-| Mori | code, testing, debugging, infrastructure | ~/project/agent-os/mori-workspace |
+| Margo | architecture, research, task_decomposition, strategy | ~/project/agentos/margo-workspace |
+| Mori | code, testing, debugging, infrastructure | ~/project/agentos/mori-workspace |
 
-## Workflow
-1. Each agent works in their own workspace checkout
-2. PR and review each other's work
-3. Merge when approved
+## Workflow (Parallel Checkouts)
+
+### Setup
+```bash
+# Margo's workspace
+cd ~/project/agentos/margo-workspace
+
+# Mori's workspace  
+cd ~/project/agentos/mori-workspace
+```
+
+### Branch Strategy
+1. Create feature branch from main in your workspace
+2. Work independently in your checkout
+3. Push branch to origin
+4. Create PR from your branch
+5. Other person reviews using GitHub
+6. Merge when approved
+
+### Example
+```bash
+# Margo working on pipeline
+cd ~/project/agentos/margo-workspace
+git checkout -b margo/pipeline-orchestrator
+# ... work ...
+git push origin margo/pipeline-orchestrator
+# Create PR on GitHub
+
+# Mori reviews in her workspace
+cd ~/project/agentos/mori-workspace
+git fetch origin
+git checkout margo/pipeline-orchestrator
+# Review, comment on PR
+```
 
 ---
 
