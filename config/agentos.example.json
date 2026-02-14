@@ -1,0 +1,80 @@
+{
+  "models": {
+    "kimi-k2": {
+      "provider": "moonshot",
+      "package": "@ai-sdk/moonshot",
+      "modelId": "kimi-k2.5",
+      "baseUrl": "https://api.kimi.com/coding",
+      "apiKeyEnv": "MOONSHOT_API_KEY",
+      "pricing": {
+        "inputPer1k": 0.005,
+        "outputPer1k": 0.015
+      }
+    },
+    "minimax": {
+      "provider": "minimax",
+      "package": "@ai-sdk/minimax",
+      "modelId": "MiniMax-M2.5",
+      "apiKeyEnv": "MINIMAX_API_KEY",
+      "pricing": {
+        "inputPer1k": 0.0015,
+        "outputPer1k": 0.006
+      }
+    },
+    "glm-47": {
+      "provider": "zhipu",
+      "package": "@ai-sdk/zhipu",
+      "modelId": "glm-4.7",
+      "apiKeyEnv": "ZHIPU_API_KEY",
+      "pricing": {
+        "inputPer1k": 0.003,
+        "outputPer1k": 0.009
+      }
+    }
+  },
+  "pipeline": {
+    "parse": {
+      "primary": "minimax",
+      "fallback": "glm-47",
+      "timeoutMs": 10000,
+      "maxRetries": 2
+    },
+    "decompose": {
+      "primary": "kimi-k2",
+      "fallback": "glm-47",
+      "timeoutMs": 30000,
+      "maxRetries": 2
+    },
+    "clarify": {
+      "primary": "kimi-k2",
+      "fallback": "minimax",
+      "timeoutMs": 20000,
+      "maxRetries": 2
+    },
+    "execute": {
+      "default": "kimi-k2",
+      "byType": {
+        "code": "kimi-k2",
+        "research": "minimax",
+        "write": "glm-47"
+      },
+      "fallback": "glm-47",
+      "timeoutMs": 60000,
+      "maxRetries": 2
+    }
+  },
+  "costTracking": {
+    "enabled": true,
+    "monthlyBudget": 100,
+    "currency": "USD",
+    "alertAtPercent": 80,
+    "webhookUrl": "${DISCORD_WEBHOOK_URL}"
+  },
+  "adapters": {
+    "filesystem": {
+      "enabled": true,
+      "goalsDir": "~/.agentos/goals"
+    }
+  },
+  "pollingIntervalMs": 60000
+}
