@@ -63,7 +63,7 @@ git checkout margo/pipeline-orchestrator
 
 ## Sprint Log
 
-### [Current Sprint - IN PROGRESS]
+### [Current Sprint - COMPLETED]
 
 | Date | Agent | Task | Status | Notes |
 |------|-------|------|--------|-------|
@@ -72,15 +72,8 @@ git checkout margo/pipeline-orchestrator
 | 2025-01-14 | Margo | Pipeline orchestrator | ✅ Merged | Main loop structure |
 | 2025-01-14 | Mori | LLM Client + Cost Tracker | ✅ Merged | Real APIs, SQLite tracking |
 | 2025-01-14 | Mori | FileSystem Adapter | ✅ Merged | Frontmatter, lock-based |
-| 2025-01-14 | Margo | Stage implementations | 🔄 PR #5 | Parse, Decompose, Clarify, Execute |
-
-### [Next Sprint]
-
-| Date | Agent | Task | Status | Notes |
-|------|-------|------|--------|-------|
-| TBD | Mori | Review PR #5 | ⏳ Todo | Review stage implementations |
-| TBD | Both | Integration test | ⏳ Todo | End-to-end with real goals |
-| TBD | Both | Bug fixes | ⏳ Todo | Fix issues found in testing |
+| 2025-01-14 | Margo | Stage implementations | ✅ Merged | Parse, Decompose, Clarify, Execute |
+| 2025-01-14 | Margo | Multi-team support | ✅ Merged | Agent config, team routing |
 
 ---
 
@@ -111,17 +104,20 @@ git checkout margo/pipeline-orchestrator
 - [x] Execute stage - LLM task execution with model selection
 - [x] Pipeline integration - All stages wired together
 
-### Phase 5: Integration Testing ✅ COMPLETE
-- [x] Fixed adapter interface mismatches
-- [x] Created e2e test suite with mocked LLM (tests/e2e.test.ts)
-- [x] Created manual e2e test script (scripts/manual-e2e.ts)
-- [x] All tests use MockLLMClient - no real API calls
+### Phase 6: Multi-Team Support ✅ COMPLETE
+- [x] Agent configuration (capabilities, teams, Discord IDs)
+- [x] Team configuration (agents, goal directories)
+- [x] Team-based file system routing
+- [x] Agent capability matching in pipeline
+- [x] AGENTOS_TEAM env var for team filtering
 
-### Next: Ready for Real Usage
-- [ ] Set API keys in environment
-- [ ] Create real goal files
-- [ ] Run `bun run scripts/manual-e2e.ts` to test
-- [ ] Run `bun test` for automated tests
+### Phase 7: Ready for Production Testing ⏳ NEXT
+- [ ] Set API keys (MOONSHOT_API_KEY, MINIMAX_API_KEY, ZHIPU_API_KEY)
+- [ ] Create test goal files for ice-cold team
+- [ ] Create test goal files for fiery-warm team
+- [ ] Run end-to-end with real LLM calls
+- [ ] Validate cost tracking
+- [ ] Bug fixes and polish
 
 ---
 
