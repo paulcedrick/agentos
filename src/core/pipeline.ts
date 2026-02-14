@@ -1,9 +1,8 @@
 /**
- * Pipeline - Main orchestration for AgentOS
- * Coordinates: Parse → Clarify → Decompose → Execute
+ * Pipeline - Multi-Team Support with Agent Routing
  */
 
-import type { Config, Goal, Task, Adapter } from '../types/index.ts';
+import type { Config, Goal, Task, Adapter, AgentConfig } from '../types/index.ts';
 import type { LLMClient } from '../llm/client.ts';
 import { StateMachine } from './state-machine.ts';
 import { LLMParseStage } from '../stages/parse.ts';
@@ -33,89 +32,126 @@ export class Pipeline {
     this.logger = new Logger('Pipeline');
   }
 
-  async runCycle(): Promise<void> {
-    const inputs = await this.adapter.fetchInputs();
+  async runCycle(teamId?: string): Promise<void> {
+    // Fetch goals for specific team or all teams
+    const goals = await this.adapter.pollGoals(teamId);
     
-    for (const input of inputs) {
-      await this.processInput(input);
+    this.logger.info(`Processing ${goals.length} goals${teamId ? ` for team ${teamId}` : ''}`);
+    
+    for (const goal of goals) {
+      await this.processGoal(goal);
     }
   }
 
-  private async processInput(input: string): Promise<void> {
-    const goalId = this.generateId();
-    this.logger.info(`Processing goal ${goalId}`);
+  private async processGoal(goal: Goal): Promise<void> {
+    this.logger.info(`[${goal.id}] Processing goal for team ${goal.teamId}`);
     
     try {
       // STAGE 1: PARSE
-      this.logger.info(`[${goalId}] Parsing goal...`);
-      const goal = await this.parseStage.run(input, goalId);
-      await this.adapter.report(goalId, 'pending', `Parsed: ${goal.description.slice(0, 60)}...`);
+      this.logger.info(`[${goal.id}] Parsing...`);
+      const parsedGoal = await this.parseStage.run(goal.description, goal.id);
+      // Preserve teamId from original goal
+      parsedGoal.teamId = goal.teamId;
       
       // STAGE 2: CLARIFY
-      this.logger.info(`[${goalId}] Checking for clarifications...`);
-      const clarification = await this.clarifyStage.shouldAsk(goal);
+      this.logger.info(`[${goal.id}] Checking clarifications...`);
+      const clarification = await this.clarifyStage.shouldAsk(parsedGoal);
       
       if (clarification.blocking) {
-        this.logger.info(`[${goalId}] Blocking clarification needed`);
+        this.logger.info(`[${goal.id}] Blocking clarification needed`);
         await this.requestClarification(goal, clarification.questions);
         return;
       }
       
-      if (clarification.shouldAsk) {
-        this.logger.info(`[${goalId}] Non-blocking questions logged`);
-        // Log but continue
-      }
-      
       // STAGE 3: DECOMPOSE
-      this.logger.info(`[${goalId}] Decomposing into tasks...`);
-      const tasks = await this.decomposeStage.run(goal);
-      this.logger.info(`[${goalId}] Created ${tasks.length} tasks`);
+      this.logger.info(`[${goal.id}] Decomposing...`);
+      const tasks = await this.decomposeStage.run(parsedGoal);
       
-      // STAGE 4: EXECUTE tasks
+      // Assign teamId to each task
       for (const task of tasks) {
-        await this.executeTask(task, goal);
+        task.teamId = goal.teamId;
       }
       
-      this.logger.info(`[${goalId}] All tasks completed`);
-      await this.adapter.report(goalId, 'completed', 'All tasks completed successfully');
+      this.logger.info(`[${goal.id}] Created ${tasks.length} tasks`);
+      
+      // STAGE 4: EXECUTE tasks (with agent matching)
+      for (const task of tasks) {
+        await this.executeTaskWithAgentMatching(task, parsedGoal);
+      }
+      
+      this.logger.info(`[${goal.id}] Completed`);
+      await this.adapter.report(goal.id, 'completed', 'All tasks completed');
       
     } catch (error) {
-      this.logger.error(`[${goalId}] Failed`, error);
-      await this.adapter.report(goalId, 'failed', String(error));
+      this.logger.error(`[${goal.id}] Failed`, error);
+      await this.adapter.report(goal.id, 'failed', String(error));
     }
   }
 
-  private async executeTask(task: Task, goal: Goal): Promise<void> {
-    // Check if task needs clarification
+  private async executeTaskWithAgentMatching(task: Task, goal: Goal): Promise<void> {
+    // Find best agent for this task based on capabilities
+    const agent = this.findBestAgent(task, goal.teamId);
+    
+    if (!agent) {
+      this.logger.warn(`[${task.id}] No agent found with capabilities: ${task.requiredCapabilities.join(', ')}`);
+      await this.adapter.report(task.id, 'blocked', `No agent available for capabilities: ${task.requiredCapabilities.join(', ')}`);
+      return;
+    }
+    
+    this.logger.info(`[${task.id}] Assigning to agent: ${agent.name}`);
+    
+    // Check for task-level clarifications
     const taskClarification = await this.clarifyStage.shouldAskForTask(task, goal);
     if (taskClarification.blocking) {
-      this.logger.info(`[${task.id}] Task blocked - needs clarification`);
       await this.adapter.report(task.id, 'blocked', 'Needs clarification');
       return;
     }
     
-    // Claim task
-    const claimed = await this.adapter.claimTask(task.id, 'agentos');
+    // Claim task for this agent
+    const claimed = await this.adapter.claim(task.id, agent.id);
     if (!claimed) {
       this.logger.info(`[${task.id}] Already claimed`);
       return;
     }
     
+    // Execute
     this.stateMachine.transition(task, 'in_progress');
-    await this.adapter.report(task.id, 'in_progress', 'Starting execution');
+    await this.adapter.report(task.id, 'in_progress', `Assigned to ${agent.name}`);
     
     try {
-      this.logger.info(`[${task.id}] Executing...`);
       const result = await this.executeStage.run(task, goal);
       
-      this.stateMachine.transition(task, 'complete');
-      await this.adapter.report(task.id, 'complete', result.summary);
+      this.stateMachine.transition(task, 'completed');
+      await this.adapter.report(task.id, 'completed', result.summary);
       
     } catch (error) {
-      this.logger.error(`[${task.id}] Failed`, error);
+      this.logger.error(`[${task.id}] Execution failed`, error);
       this.stateMachine.transition(task, 'failed');
       await this.adapter.report(task.id, 'failed', String(error));
     }
+  }
+
+  private findBestAgent(task: Task, teamId: string): AgentConfig | null {
+    // Get agents for this team
+    const team = this.config.teams[teamId];
+    if (!team) return null;
+    
+    const teamAgents = team.agents
+      .map(id => this.config.agents[id])
+      .filter(a => a?.isActive);
+    
+    // Find agent with matching capabilities
+    for (const agent of teamAgents) {
+      const hasCapabilities = task.requiredCapabilities.every(cap => 
+        agent.capabilities.includes(cap)
+      );
+      if (hasCapabilities) {
+        return agent;
+      }
+    }
+    
+    // Fallback: return first agent if no exact match
+    return teamAgents[0] || null;
   }
 
   private async requestClarification(
@@ -127,9 +163,5 @@ export class Pipeline {
     ).join('\n');
     
     await this.adapter.requestClarification(goal.id, message);
-  }
-
-  private generateId(): string {
-    return `goal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   }
 }

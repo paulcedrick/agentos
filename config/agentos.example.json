@@ -1,4 +1,58 @@
 {
+  "agents": {
+    "margo": {
+      "id": "margo",
+      "name": "Margo",
+      "capabilities": ["architecture", "research", "strategy", "task_decomposition"],
+      "discordId": "1470688384040046735",
+      "teams": ["ice-cold"],
+      "maxParallelTasks": 2,
+      "isActive": true
+    },
+    "mori": {
+      "id": "mori",
+      "name": "Mori",
+      "capabilities": ["code", "testing", "debugging", "infrastructure"],
+      "discordId": "1470413438483435654",
+      "teams": ["ice-cold"],
+      "maxParallelTasks": 3,
+      "isActive": true
+    },
+    "max": {
+      "id": "max",
+      "name": "Max",
+      "capabilities": ["product", "requirements", "strategy"],
+      "teams": ["fiery-warm"],
+      "maxParallelTasks": 2,
+      "isActive": true
+    },
+    "usagi": {
+      "id": "usagi",
+      "name": "Usagi",
+      "capabilities": ["frontend", "ui", "react", "css"],
+      "teams": ["fiery-warm"],
+      "maxParallelTasks": 2,
+      "isActive": true
+    }
+  },
+  
+  "teams": {
+    "ice-cold": {
+      "id": "ice-cold",
+      "name": "Team Ice Cold",
+      "agents": ["margo", "mori"],
+      "goalsDir": "ice-cold",
+      "channels": ["#team-ice-cold"]
+    },
+    "fiery-warm": {
+      "id": "fiery-warm",
+      "name": "Team Fiery Warm",
+      "agents": ["max", "usagi"],
+      "goalsDir": "fiery-warm",
+      "channels": ["#team-fiery-warm"]
+    }
+  },
+  
   "models": {
     "kimi-k2": {
       "provider": "moonshot",
@@ -32,6 +86,7 @@
       }
     }
   },
+  
   "pipeline": {
     "parse": {
       "primary": "minimax",
@@ -63,6 +118,7 @@
       "maxRetries": 2
     }
   },
+  
   "costTracking": {
     "enabled": true,
     "monthlyBudget": 100,
@@ -70,11 +126,13 @@
     "alertAtPercent": 80,
     "webhookUrl": "${DISCORD_WEBHOOK_URL}"
   },
+  
   "adapters": {
     "filesystem": {
       "enabled": true,
-      "goalsDir": "~/.agentos/goals"
+      "baseDir": "~/.agentos/goals"
     }
   },
+  
   "pollingIntervalMs": 60000
 }

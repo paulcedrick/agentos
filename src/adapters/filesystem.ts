@@ -1,147 +1,197 @@
 /**
- * FileSystem Adapter
- * Reads goals from .md files in a directory
+ * FileSystem Adapter - Multi-Team Support
+ * Reads goals from team-specific subdirectories
  */
 
-import { readdir, readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readdir, readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import type { Goal, AgentOSAdapter } from '../types/index.ts';
+import type { Goal, Adapter, Config } from '../types/index.ts';
 
 export interface FileSystemAdapterConfig {
-  goalsDir: string;
-  doneDir?: string;
+  baseDir: string;
 }
 
-export class FileSystemAdapter implements AgentOSAdapter {
+export class FileSystemAdapter implements Adapter {
   name = 'filesystem';
-  private goalsDir: string;
-  private doneDir: string;
+  private baseDir: string;
+  private config?: Config;
 
   constructor(config: FileSystemAdapterConfig) {
-    this.goalsDir = config.goalsDir;
-    this.doneDir = config.doneDir || join(config.goalsDir, 'done');
+    this.baseDir = config.baseDir.replace('~', process.env.HOME || '');
   }
 
-  private async ensureDirs() {
-    try {
-      await mkdir(this.goalsDir, { recursive: true });
-      await mkdir(this.doneDir, { recursive: true });
-    } catch {}
+  setConfig(config: Config): void {
+    this.config = config;
   }
 
-  async pollGoals(): Promise<Goal[]> {
-    await this.ensureDirs();
-    const files = await readdir(this.goalsDir);
-    const goalFiles = files.filter((f) => f.endsWith('.goal.md'));
-    const goals: Goal[] = [];
-
-    for (const file of goalFiles) {
-      const path = join(this.goalsDir, file);
-      const parsed = await this.parseGoalFile(path);
-
-      if (parsed.frontmatter.status !== 'pending') continue;
-
-      goals.push({
-        id: file.replace('.goal.md', ''),
-        source: 'filesystem',
-        sourceId: file,
-        description: parsed.body,
-        successCriteria: parsed.frontmatter.successCriteria || [],
-        context: parsed.frontmatter.context,
-        priority: parsed.frontmatter.priority || 'medium',
-        status: 'pending',
-        createdBy: parsed.frontmatter.createdBy || 'unknown',
-        createdAt: parsed.frontmatter.createdAt || new Date().toISOString(),
-        metadata: { file: path },
-      });
+  async initialize(): Promise<void> {
+    // Create base directory
+    await mkdir(this.baseDir, { recursive: true });
+    
+    // Create team subdirectories
+    if (this.config) {
+      for (const [teamId, team] of Object.entries(this.config.teams)) {
+        const teamDir = join(this.baseDir, team.goalsDir);
+        await mkdir(teamDir, { recursive: true });
+        
+        // Create done subdirectory for each team
+        await mkdir(join(teamDir, 'done'), { recursive: true });
+      }
     }
+  }
+
+  getGoalsDir(teamId: string): string {
+    if (!this.config) {
+      throw new Error('Config not set');
+    }
+    const team = this.config.teams[teamId];
+    if (!team) {
+      throw new Error(`Team not found: ${teamId}`);
+    }
+    return join(this.baseDir, team.goalsDir);
+  }
+
+  async fetchInputs(teamId?: string): Promise<string[]> {
+    if (teamId) {
+      // Fetch from specific team
+      const teamDir = this.getGoalsDir(teamId);
+      return this.fetchFromDirectory(teamDir);
+    }
+    
+    // Fetch from all teams
+    const allInputs: string[] = [];
+    for (const teamId of Object.keys(this.config?.teams || {})) {
+      const teamDir = this.getGoalsDir(teamId);
+      const inputs = await this.fetchFromDirectory(teamDir);
+      allInputs.push(...inputs);
+    }
+    return allInputs;
+  }
+
+  private async fetchFromDirectory(dir: string): Promise<string[]> {
+    try {
+      const files = await readdir(dir);
+      const goalFiles = files.filter(f => f.endsWith('.goal.md'));
+      
+      const inputs: string[] = [];
+      for (const file of goalFiles) {
+        const content = await readFile(join(dir, file), 'utf-8');
+        inputs.push(content);
+      }
+      return inputs;
+    } catch {
+      return [];
+    }
+  }
+
+  async pollGoals(teamId?: string): Promise<Goal[]> {
+    const inputs = await this.fetchInputs(teamId);
+    const goals: Goal[] = [];
+    
+    for (const input of inputs) {
+      const goal = await this.parseGoalFile(input);
+      if (goal.status === 'pending') {
+        goals.push(goal);
+      }
+    }
+    
     return goals;
   }
 
-  private async parseGoalFile(path: string) {
-    const content = await readFile(path, 'utf-8');
+  private async parseGoalFile(content: string): Promise<Goal> {
+    // Extract team from frontmatter or parse it
     const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-    if (!match) return { frontmatter: {}, body: content };
-
-    const [, fmStr, body] = match;
-    const frontmatter: Record<string, any> = {};
-    for (const line of fmStr.split('\n')) {
-      const idx = line.indexOf(':');
-      if (idx > 0) {
-        frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-      }
-    }
-    return { frontmatter, body: body.trim() };
-  }
-
-  async claimTask(taskId: string, agentId: string): Promise<boolean> {
-    const lockFile = join(this.goalsDir, `${taskId}.lock`);
-    try {
-      await writeFile(lockFile, agentId, { flag: 'wx' });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async updateGoal(goalId: string, status: string, message?: string): Promise<void> {
-    const goalFile = `${goalId}.goal.md`;
-    const path = join(this.goalsDir, goalFile);
-    try {
-      const content = await readFile(path, 'utf-8');
-      const parsed = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-      if (!parsed) return;
-
-      const fm: Record<string, any> = {};
-      for (const line of parsed[1].split('\n')) {
+    
+    let frontmatter: Record<string, any> = {};
+    let body = content;
+    
+    if (match) {
+      const [, fmStr, bodyStr] = match;
+      body = bodyStr.trim();
+      
+      for (const line of fmStr.split('\n')) {
         const idx = line.indexOf(':');
-        if (idx > 0) fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        if (idx > 0) {
+          frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        }
       }
-      fm.status = status;
-      if (message) fm.lastMessage = message;
-
-      const fmLines = Object.entries(fm).map(([k, v]) => `${k}: ${v}`).join('\n');
-      const newContent = `---\n${fmLines}\n---\n${parsed[2]}`;
-
-      if (status === 'completed' || status === 'done') {
-        await writeFile(join(this.doneDir, goalFile), newContent);
-      } else {
-        await writeFile(path, newContent);
-      }
-    } catch (e) {
-      console.error(`Failed to update goal ${goalId}:`, e);
     }
+    
+    return {
+      id: frontmatter.id || `goal-${Date.now()}`,
+      source: 'filesystem',
+      sourceId: frontmatter.id || 'unknown',
+      teamId: frontmatter.team || 'unknown',
+      description: body,
+      successCriteria: frontmatter.successCriteria?.split(',') || [],
+      priority: frontmatter.priority || 'medium',
+      status: frontmatter.status || 'pending',
+      createdBy: frontmatter.createdBy || 'unknown',
+      createdAt: frontmatter.createdAt || new Date().toISOString(),
+      metadata: { frontmatter }
+    };
   }
 
-  async updateTask(taskId: string, status: string, message?: string): Promise<void> {
-    console.log(`[filesystem] Task ${taskId}: ${status} ${message || ''}`);
+  async claim(inputId: string, agentId: string): Promise<boolean> {
+    // Find the goal file and create a lock
+    for (const teamId of Object.keys(this.config?.teams || {})) {
+      const teamDir = this.getGoalsDir(teamId);
+      const lockFile = join(teamDir, `${inputId}.lock`);
+      
+      try {
+        await writeFile(lockFile, agentId, { flag: 'wx' });
+        return true;
+      } catch {
+        // Lock exists, try next team or return false
+      }
+    }
+    return false;
   }
 
-  async requestClarification(goalId: string, question: string): Promise<void> {
-    const clarFile = join(this.goalsDir, `${goalId}.clarification.md`);
-    await writeFile(clarFile, `# Clarification Request\n\n## Question\n${question}\n\n## Status\nAwaiting answer...\n`);
-  }
-
-  async notify(recipients: string[], message: string): Promise<void> {
-    console.log(`[NOTIFY] ${recipients.join(', ')}: ${message}`);
-  }
-
-  // Adapter interface methods expected by Pipeline
-  async fetchInputs(): Promise<string[]> {
-    const goals = await this.pollGoals();
-    return goals.map(g => g.metadata?.file as string || '').filter(Boolean);
-  }
-
-  async report(id: string, status: string, message?: string): Promise<void> {
-    // Try to update as goal first, fall back to task
-    await this.updateGoal(id, status, message);
+  async report(inputId: string, status: string, message?: string): Promise<void> {
+    // Update the goal file with new status
+    for (const teamId of Object.keys(this.config?.teams || {})) {
+      const teamDir = this.getGoalsDir(teamId);
+      const goalFile = join(teamDir, `${inputId}.goal.md`);
+      
+      try {
+        const content = await readFile(goalFile, 'utf-8');
+        const updated = content.replace(
+          /status:.*$/m,
+          `status: ${status}`
+        );
+        await writeFile(goalFile, updated);
+        return;
+      } catch {
+        // File not in this team, continue
+      }
+    }
   }
 
   async notify(message: string): Promise<void> {
     console.log(`[NOTIFY] ${message}`);
   }
 
-  async claim(id: string, agentId: string): Promise<boolean> {
-    return this.claimTask(id, agentId);
+  // Legacy method for compatibility
+  async claimTask(taskId: string, agentId: string): Promise<boolean> {
+    return this.claim(taskId, agentId);
+  }
+
+  async updateGoal(goalId: string, status: string, message?: string): Promise<void> {
+    await this.report(goalId, status, message);
+  }
+
+  async requestClarification(goalId: string, question: string): Promise<void> {
+    for (const teamId of Object.keys(this.config?.teams || {})) {
+      const teamDir = this.getGoalsDir(teamId);
+      const clarFile = join(teamDir, `${goalId}.clarification.md`);
+      
+      try {
+        await writeFile(clarFile, `# Clarification Request\n\n${question}\n`);
+        return;
+      } catch {
+        // Continue to next team
+      }
+    }
   }
 }
