@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 /**
- * AgentOS - Entry Point with Multi-Team Support
+ * AgentOS - Entry Point with Multi-Team and Discord Support
  */
 
 import { ConfigLoader } from './config/config.ts';
 import { FileSystemAdapter } from './adapters/filesystem.ts';
+import { DiscordAdapter } from './adapters/discord.ts';
 import { createLLMClient } from './llm/client.ts';
 import { Pipeline } from './core/pipeline.ts';
 import { Logger } from './utils/logger.ts';
@@ -12,10 +13,14 @@ import { Logger } from './utils/logger.ts';
 const logger = new Logger('AgentOS');
 
 async function main() {
-  // Get team from environment or process all teams
+  // Get configuration
   const teamId = process.env.AGENTOS_TEAM;
+  const useDiscord = process.env.AGENTOS_ADAPTER === 'discord';
   
-  logger.info('AgentOS Starting...', teamId ? { team: teamId } : { mode: 'all-teams' });
+  logger.info('AgentOS Starting...', { 
+    team: teamId || 'all',
+    adapter: useDiscord ? 'discord' : 'filesystem'
+  });
   
   try {
     // Load configuration
@@ -30,20 +35,30 @@ async function main() {
     
     // Validate team if specified
     if (teamId && !config.teams[teamId]) {
-      throw new Error(`Unknown team: ${teamId}. Available: ${Object.keys(config.teams).join(', ')}`);
+      throw new Error(`Unknown team: ${teamId}`);
     }
     
-    // Initialize adapter with config
-    const adapter = new FileSystemAdapter({
-      baseDir: config.adapters.filesystem.baseDir
-    });
+    // Initialize adapter
+    let adapter;
+    
+    if (useDiscord && config.adapters.discord?.enabled) {
+      logger.info('Using Discord adapter');
+      adapter = new DiscordAdapter({
+        botToken: config.adapters.discord.botToken,
+        taskChannelId: config.adapters.discord.taskChannelId,
+        guildId: config.adapters.discord.guildId
+      });
+    } else {
+      logger.info('Using FileSystem adapter');
+      adapter = new FileSystemAdapter({
+        baseDir: config.adapters.filesystem.baseDir
+      });
+    }
+    
     adapter.setConfig(config);
     await adapter.initialize();
     
-    logger.info('Adapter initialized', { 
-      baseDir: config.adapters.filesystem.baseDir,
-      teams: Object.entries(config.teams).map(([id, t]) => ({ id, dir: t.goalsDir }))
-    });
+    logger.info('Adapter initialized');
     
     // Initialize LLM client
     const llm = createLLMClient(config.models, config.pipeline);
@@ -51,8 +66,7 @@ async function main() {
     // Initialize pipeline
     const pipeline = new Pipeline(config, adapter, llm);
     
-    logger.info('AgentOS initialized successfully');
-    logger.info(teamId ? `Processing team: ${teamId}` : 'Processing all teams');
+    logger.info('AgentOS ready');
     
     // Main loop
     while (true) {
@@ -64,7 +78,6 @@ async function main() {
       
       // Wait before next poll
       const interval = config.pollingIntervalMs || 60000;
-      logger.debug(`Waiting ${interval}ms before next cycle`);
       await sleep(interval);
     }
     

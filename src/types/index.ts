@@ -155,19 +155,27 @@ export interface FileSystemAdapterConfig {
 	baseDir: string; // Base directory, teams will be subdirectories
 }
 
-export interface Config {
-	// NEW: Agent and Team definitions
-	agents: Record<string, AgentConfig>;
-	teams: Record<string, TeamConfig>;
+export interface DiscordAdapterConfig {
+  enabled: boolean;
+  botToken: string;
+  taskChannelId: string;
+  guildId?: string;
+}
 
-	// Existing configs
-	models: Record<string, ModelConfig>;
-	pipeline: PipelineConfig;
-	costTracking: CostTrackingConfig;
-	adapters: {
-		filesystem: FileSystemAdapterConfig;
-	};
-	pollingIntervalMs: number;
+export interface Config {
+  // NEW: Agent and Team definitions
+  agents: Record<string, AgentConfig>;
+  teams: Record<string, TeamConfig>;
+  
+  // Existing configs
+  models: Record<string, ModelConfig>;
+  pipeline: PipelineConfig;
+  costTracking: CostTrackingConfig;
+  adapters: {
+    filesystem: FileSystemAdapterConfig;
+    discord?: DiscordAdapterConfig;
+  };
+  pollingIntervalMs: number;
 }
 
 // Adapter Interface
