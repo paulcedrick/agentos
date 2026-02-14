@@ -63,28 +63,24 @@ git checkout margo/pipeline-orchestrator
 
 ## Sprint Log
 
-### [Current Sprint - COMPLETED]
+### [Current Sprint - IN PROGRESS]
 
 | Date | Agent | Task | Status | Notes |
 |------|-------|------|--------|-------|
 | 2025-01-14 | Mori | CLI + types | ✅ Merged | Initial scaffold |
 | 2025-01-14 | Margo | State machine | ✅ Merged | Deterministic task lifecycle |
 | 2025-01-14 | Margo | Pipeline orchestrator | ✅ Merged | Main loop structure |
-| 2025-01-14 | Margo | Stage interfaces | ✅ Merged | Parse, decompose, clarify, execute |
-| 2025-01-14 | Mori | LLM Client | ✅ Merged | Multi-provider with mock responses |
-| 2025-01-14 | Mori | Cost Tracker | ✅ Merged | SQLite with budget alerts |
-| 2025-01-14 | Mori | FileSystem Adapter | ✅ Merged | Frontmatter parsing, lock-based claiming |
+| 2025-01-14 | Mori | LLM Client + Cost Tracker | ✅ Merged | Real APIs, SQLite tracking |
+| 2025-01-14 | Mori | FileSystem Adapter | ✅ Merged | Frontmatter, lock-based |
+| 2025-01-14 | Margo | Stage implementations | 🔄 PR #5 | Parse, Decompose, Clarify, Execute |
 
 ### [Next Sprint]
 
 | Date | Agent | Task | Status | Notes |
 |------|-------|------|--------|-------|
-| TBD | Mori | Provider SDK wiring | ⏳ Todo | Real API calls instead of mocks |
-| TBD | Margo | Parse stage implementation | ⏳ Todo | Wire to LLMClient |
-| TBD | Margo | Decompose stage implementation | ⏳ Todo | Wire to LLMClient |
-| TBD | Margo | Clarify stage implementation | ⏳ Todo | Wire to LLMClient |
-| TBD | Margo | Execute stage implementation | ⏳ Todo | Wire to LLMClient |
-| TBD | Both | Integration test | ⏳ Todo | End-to-end with file-based goals |
+| TBD | Mori | Review PR #5 | ⏳ Todo | Review stage implementations |
+| TBD | Both | Integration test | ⏳ Todo | End-to-end with real goals |
+| TBD | Both | Bug fixes | ⏳ Todo | Fix issues found in testing |
 
 ---
 
@@ -108,14 +104,15 @@ git checkout margo/pipeline-orchestrator
 - [ ] PXLabz adapter (future)
 - [ ] Webhook adapter (future)
 
-### Phase 4: Pipeline Stage Implementations ⏳ NEXT
-- [ ] Parse stage - wire to LLMClient
-- [ ] Decompose stage - wire to LLMClient
-- [ ] Clarify stage - wire to LLMClient
-- [ ] Execute stage - wire to LLMClient
+### Phase 4: Pipeline Stage Implementations ✅ COMPLETE
+- [x] Parse stage - LLM-powered goal extraction with Zod
+- [x] Decompose stage - LLM-powered task breakdown
+- [x] Clarify stage - Blocking/non-blocking question detection
+- [x] Execute stage - LLM task execution with model selection
+- [x] Pipeline integration - All stages wired together
 
-### Phase 5: Integration & Real APIs ⏳ NEXT
-- [ ] Wire real LLM providers (Moonshot, MiniMax, Zhipu)
+### Phase 5: Integration Testing ⏳ IN PROGRESS
+- [ ] Mori reviews PR #5
 - [ ] End-to-end test with file-based goals
 - [ ] Budget alert webhooks
 - [ ] Documentation
