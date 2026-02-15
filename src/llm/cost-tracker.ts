@@ -5,9 +5,11 @@
 
 import { Database } from "bun:sqlite";
 import type { CostRecord, CostTracker } from "../types/index.ts";
+import { Logger } from "../utils/logger.ts";
 
 export class SQLiteCostTracker implements CostTracker {
 	#db: Database;
+	#logger = new Logger("CostTracker");
 
 	constructor(dbPath: string = "./data/costs.db") {
 		this.#db = new Database(dbPath);
@@ -114,6 +116,16 @@ export class SQLiteCostTracker implements CostTracker {
 
 	async isOverBudget(monthlyBudget: number): Promise<boolean> {
 		const spend = await this.getCurrentMonthSpend();
+		const pct = (spend / monthlyBudget) * 100;
+		if (spend >= monthlyBudget) {
+			this.#logger.warn(
+				`Over budget! $${spend.toFixed(2)} / $${monthlyBudget} (${pct.toFixed(0)}%)`,
+			);
+		} else if (pct >= 80) {
+			this.#logger.warn(
+				`Budget warning: $${spend.toFixed(2)} / $${monthlyBudget} (${pct.toFixed(0)}%)`,
+			);
+		}
 		return spend >= monthlyBudget;
 	}
 }

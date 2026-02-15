@@ -46,6 +46,7 @@ describe("ConfigLoader", () => {
 					provider: "moonshot",
 					package: "test",
 					modelId: "m1",
+					baseUrl: "https://api.moonshot.cn/v1",
 					apiKeyEnv: "KEY",
 					pricing: { inputPer1k: 0.01, outputPer1k: 0.02 },
 				},
@@ -54,7 +55,7 @@ describe("ConfigLoader", () => {
 				parse: { primary: "model-1" },
 				decompose: { primary: "model-1" },
 				clarify: { primary: "model-1" },
-				execute: { primary: "model-1", default: "model-1" },
+				execute: { default: "model-1" },
 			},
 			costTracking: {
 				enabled: false,

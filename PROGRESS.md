@@ -5,9 +5,8 @@ Generic Agent Operating System — makes agents proactive with goals from any so
 
 ## Architecture
 ```
-Goal → Parse → Decompose → Match Capabilities → Execute → Clarify → Report
-                    ↑
-             (Adapter-agnostic)
+Goal → Parse → Clarify → Decompose → Match Capabilities → Execute → Report
+                                            (dependency-aware)
 ```
 
 ## Adapters (Pluggable)
@@ -143,7 +142,7 @@ interface LLMClient {
   generate(
     stage: 'parse' | 'decompose' | 'clarify' | 'execute',
     prompt: string,
-    options?: { schema?: object; modelAlias?: string }
+    options?: { schema?: unknown; modelAlias?: string }
   ): Promise<{ 
     text: string; 
     usage: { prompt: number; completion: number } 
@@ -156,7 +155,12 @@ interface LLMClient {
 interface Adapter {
   fetchInputs(): Promise<string[]>;
   claim(inputId: string, agentId: string): Promise<boolean>;
-  report(inputId: string, status: string, message: string): Promise<void>;
+  report(
+    inputId: string,
+    status: GoalStatus | TaskStatus,
+    message: string,
+    options?: { entity?: 'goal' | 'task'; teamId?: string }
+  ): Promise<void>;
   notify(message: string): Promise<void>;
 }
 ```

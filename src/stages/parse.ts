@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { Goal, LLMClient } from "../types/index.ts";
+import { Logger } from "../utils/logger.ts";
 
 const GoalParseSchema = z.object({
 	description: z.string().describe("Clear, concise description of the goal"),
@@ -25,12 +26,18 @@ export interface ParseStage {
 
 export class LLMParseStage implements ParseStage {
 	#llm: LLMClient;
+	#logger = new Logger("ParseStage");
 
 	constructor(llm: LLMClient) {
 		this.#llm = llm;
 	}
 
 	async run(input: string, goalId: string): Promise<Goal> {
+		this.#logger.info(`Starting parse for goal=${goalId}`);
+		this.#logger.debug(`Input (${input.length} chars)`, {
+			input: input.slice(0, 200),
+		});
+
 		const prompt = `Analyze this goal description and extract structured information.
 
 Input:
@@ -50,20 +57,28 @@ Respond with structured data.`;
 			schema: GoalParseSchema,
 		});
 
+		this.#logger.debug("LLM call complete", { textLength: result.text.length });
+
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(result.text);
-		} catch {
+		} catch (error) {
+			this.#logger.error(`Invalid JSON from LLM for goal=${goalId}`, error);
 			throw new Error(
 				`Parse stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
 			);
 		}
 		const validated = GoalParseSchema.parse(parsed);
 
+		this.#logger.info(
+			`Parsed goal=${goalId}: priority=${validated.priority}, criteria=${validated.successCriteria.length}`,
+		);
+
 		return {
 			id: goalId,
 			source: "filesystem",
 			sourceId: goalId,
+			teamId: "unknown",
 			description: validated.description,
 			successCriteria: validated.successCriteria,
 			context: validated.context,

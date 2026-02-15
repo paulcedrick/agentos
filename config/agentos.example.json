@@ -1,144 +1,158 @@
 {
-  "agents": {
-    "margo": {
-      "id": "margo",
-      "name": "Margo",
-      "capabilities": ["architecture", "research", "strategy", "task_decomposition"],
-      "discordId": "1470688384040046735",
-      "teams": ["ice-cold"],
-      "maxParallelTasks": 2,
-      "isActive": true
-    },
-    "mori": {
-      "id": "mori",
-      "name": "Mori",
-      "capabilities": ["code", "testing", "debugging", "infrastructure"],
-      "discordId": "1470413438483435654",
-      "teams": ["ice-cold"],
-      "maxParallelTasks": 3,
-      "isActive": true
-    },
-    "max": {
-      "id": "max",
-      "name": "Max",
-      "capabilities": ["product", "requirements", "strategy"],
-      "teams": ["fiery-warm"],
-      "maxParallelTasks": 2,
-      "isActive": true
-    },
-    "usagi": {
-      "id": "usagi",
-      "name": "Usagi",
-      "capabilities": ["frontend", "ui", "react", "css"],
-      "teams": ["fiery-warm"],
-      "maxParallelTasks": 2,
-      "isActive": true
-    }
-  },
-  
-  "teams": {
-    "ice-cold": {
-      "id": "ice-cold",
-      "name": "Team Ice Cold",
-      "agents": ["margo", "mori"],
-      "goalsDir": "ice-cold",
-      "channels": ["#team-ice-cold"]
-    },
-    "fiery-warm": {
-      "id": "fiery-warm",
-      "name": "Team Fiery Warm",
-      "agents": ["max", "usagi"],
-      "goalsDir": "fiery-warm",
-      "channels": ["#team-fiery-warm"]
-    }
-  },
-  
-  "models": {
-    "kimi-k2": {
-      "provider": "moonshot",
-      "package": "@ai-sdk/moonshot",
-      "modelId": "kimi-k2.5",
-      "baseUrl": "https://api.kimi.com/coding",
-      "apiKeyEnv": "MOONSHOT_API_KEY",
-      "pricing": {
-        "inputPer1k": 0.005,
-        "outputPer1k": 0.015
-      }
-    },
-    "minimax": {
-      "provider": "minimax",
-      "package": "@ai-sdk/minimax",
-      "modelId": "MiniMax-M2.5",
-      "apiKeyEnv": "MINIMAX_API_KEY",
-      "pricing": {
-        "inputPer1k": 0.0015,
-        "outputPer1k": 0.006
-      }
-    },
-    "glm-47": {
-      "provider": "zhipu",
-      "package": "@ai-sdk/zhipu",
-      "modelId": "glm-4.7",
-      "apiKeyEnv": "ZHIPU_API_KEY",
-      "pricing": {
-        "inputPer1k": 0.003,
-        "outputPer1k": 0.009
-      }
-    }
-  },
-  
-  "pipeline": {
-    "parse": {
-      "primary": "minimax",
-      "fallback": "glm-47",
-      "timeoutMs": 10000,
-      "maxRetries": 2
-    },
-    "decompose": {
-      "primary": "kimi-k2",
-      "fallback": "glm-47",
-      "timeoutMs": 30000,
-      "maxRetries": 2
-    },
-    "clarify": {
-      "primary": "kimi-k2",
-      "fallback": "minimax",
-      "timeoutMs": 20000,
-      "maxRetries": 2
-    },
-    "execute": {
-      "default": "kimi-k2",
-      "byType": {
-        "code": "kimi-k2",
-        "research": "minimax",
-        "write": "glm-47"
-      },
-      "fallback": "glm-47",
-      "timeoutMs": 60000,
-      "maxRetries": 2
-    }
-  },
-  
-  "costTracking": {
-    "enabled": true,
-    "monthlyBudget": 100,
-    "currency": "USD",
-    "alertAtPercent": 80,
-    "webhookUrl": "${DISCORD_WEBHOOK_URL}"
-  },
-  
-  "adapters": {
-    "filesystem": {
-      "enabled": true,
-      "baseDir": "~/.agentos/goals"
-    },
-    "discord": {
-      "enabled": true,
-      "botToken": "${DISCORD_BOT_TOKEN}",
-      "taskChannelId": "1471428005820891247",
-      "guildId": "1362670336637800509"
-    }
-  },
-  
-  "pollingIntervalMs": 60000
+	"adapter": "discord",
+	"team": "ice-cold",
+
+	"agents": {
+		"margo": {
+			"id": "margo",
+			"name": "Margo",
+			"capabilities": [
+				"architecture",
+				"research",
+				"strategy",
+				"task_decomposition"
+			],
+			"discordId": "1470688384040046735",
+			"teams": ["ice-cold"],
+			"maxParallelTasks": 2,
+			"isActive": true
+		},
+		"mori": {
+			"id": "mori",
+			"name": "Mori",
+			"capabilities": ["code", "testing", "debugging", "infrastructure"],
+			"discordId": "1470413438483435654",
+			"teams": ["ice-cold"],
+			"maxParallelTasks": 3,
+			"isActive": true
+		},
+		"max": {
+			"id": "max",
+			"name": "Max",
+			"capabilities": ["product", "requirements", "strategy"],
+			"teams": ["fiery-warm"],
+			"maxParallelTasks": 2,
+			"isActive": true
+		},
+		"usagi": {
+			"id": "usagi",
+			"name": "Usagi",
+			"capabilities": ["frontend", "ui", "react", "css"],
+			"teams": ["fiery-warm"],
+			"maxParallelTasks": 2,
+			"isActive": true
+		}
+	},
+
+	"teams": {
+		"ice-cold": {
+			"id": "ice-cold",
+			"name": "Team Ice Cold",
+			"agents": ["margo", "mori"],
+			"goalsDir": ".",
+			"channels": ["#team-ice-cold"]
+		},
+		"fiery-warm": {
+			"id": "fiery-warm",
+			"name": "Team Fiery Warm",
+			"agents": ["max", "usagi"],
+			"goalsDir": "fiery-warm",
+			"channels": ["#team-fiery-warm"]
+		}
+	},
+
+	"models": {
+		"kimi-k2": {
+			"provider": "moonshot",
+			"package": "@ai-sdk/moonshot",
+			"modelId": "kimi-for-coding",
+			"baseUrl": "https://api.kimi.com/coding/v1",
+			"apiKeyEnv": "MOONSHOT_API_KEY",
+			"headers": {
+				"User-Agent": "KimiCLI/1.3"
+			},
+			"pricing": {
+				"inputPer1k": 0.005,
+				"outputPer1k": 0.015
+			}
+		},
+		"minimax": {
+			"provider": "minimax",
+			"package": "@ai-sdk/minimax",
+			"modelId": "MiniMax-M2.5",
+			"baseUrl": "https://api.minimax.io/v1",
+			"apiKeyEnv": "MINIMAX_API_KEY",
+			"pricing": {
+				"inputPer1k": 0.0015,
+				"outputPer1k": 0.006
+			}
+		},
+		"glm-47": {
+			"provider": "zhipu",
+			"package": "@ai-sdk/zhipu",
+			"modelId": "glm-4.7",
+			"baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+			"apiKeyEnv": "ZHIPU_API_KEY",
+			"pricing": {
+				"inputPer1k": 0.003,
+				"outputPer1k": 0.009
+			}
+		}
+	},
+
+	"pipeline": {
+		"parse": {
+			"primary": "minimax",
+			"fallback": "glm-47",
+			"timeoutMs": 10000,
+			"maxRetries": 2
+		},
+		"decompose": {
+			"primary": "kimi-k2",
+			"fallback": "glm-47",
+			"timeoutMs": 30000,
+			"maxRetries": 2
+		},
+		"clarify": {
+			"primary": "kimi-k2",
+			"fallback": "minimax",
+			"timeoutMs": 20000,
+			"maxRetries": 2
+		},
+		"execute": {
+			"default": "kimi-k2",
+			"byType": {
+				"code": "kimi-k2",
+				"research": "minimax",
+				"write": "glm-47"
+			},
+			"fallback": "glm-47",
+			"timeoutMs": 60000,
+			"maxRetries": 2
+		}
+	},
+
+	"costTracking": {
+		"enabled": true,
+		"monthlyBudget": 100,
+		"currency": "USD",
+		"alertAtPercent": 80,
+		"webhookUrl": "${DISCORD_WEBHOOK_URL}"
+	},
+
+	"adapters": {
+		"filesystem": {
+			"enabled": true,
+			"baseDir": "~/.agentos/goals"
+		},
+		"discord": {
+			"enabled": true,
+			"botToken": "your-discord-bot-token-here",
+			"taskChannelId": "1471428005820891247",
+			"guildId": "1362670336637800509",
+			"adminUserId": "your-discord-admin-user-id"
+		}
+	},
+
+	"pollingIntervalMs": 60000
 }

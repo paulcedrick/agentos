@@ -37,9 +37,17 @@ See `config/agentos.example.json` for full configuration options.
 ## Architecture
 
 ```
-Goal → Parse → Decompose → Clarify → Execute → Report
-       ↑         ↑          ↑         ↑
-    MiniMax   Kimi K2    Kimi K2   Varies
+Goal → Parse → Clarify → Decompose → Execute (dependency-aware) → Report
+       ↑         ↑          ↑                ↑
+    MiniMax   Kimi K2    Kimi K2         byType/default
+```
+
+## Quality Gates
+
+```bash
+bun run test
+bun run typecheck
+bun run build
 ```
 
 ## Development
