@@ -37,6 +37,7 @@ export interface Task {
 	type: TaskType;
 	status: TaskStatus;
 	requiredCapabilities: string[];
+	estimatedEffort?: string;
 	assignedTo?: string; // Agent ID
 	claimedAt?: string;
 	completedAt?: string;
@@ -45,6 +46,7 @@ export interface Task {
 	parentId?: string;
 	order: number;
 	dependencies: string[];
+	metadata?: Record<string, unknown>;
 }
 
 export type TaskType =
@@ -52,6 +54,9 @@ export type TaskType =
 	| "code"
 	| "write"
 	| "review"
+	| "analysis"
+	| "implement"
+	| "architecture"
 	| "email"
 	| "admin"
 	| "test"
@@ -114,11 +119,13 @@ export interface TeamConfig {
 
 // Model Configuration
 export interface ModelConfig {
-	provider: "moonshot" | "minimax" | "zhipu";
+	provider: string;
 	package: string;
 	modelId: string;
-	baseUrl?: string;
-	apiKeyEnv: string;
+	baseUrl: string;
+	apiKey?: string;
+	apiKeyEnv?: string;
+	headers?: Record<string, string>;
 	pricing: {
 		inputPer1k: number;
 		outputPer1k: number;
@@ -132,14 +139,19 @@ export interface PipelineStageConfig {
 	maxRetries?: number;
 }
 
+export interface ExecutePipelineStageConfig {
+	default: string;
+	byType?: Partial<Record<TaskType, string>>;
+	fallback?: string;
+	timeoutMs?: number;
+	maxRetries?: number;
+}
+
 export interface PipelineConfig {
 	parse: PipelineStageConfig;
 	decompose: PipelineStageConfig;
 	clarify: PipelineStageConfig;
-	execute: PipelineStageConfig & {
-		default: string;
-		byType?: Record<string, string>;
-	};
+	execute: ExecutePipelineStageConfig;
 }
 
 export interface CostTrackingConfig {
@@ -156,26 +168,33 @@ export interface FileSystemAdapterConfig {
 }
 
 export interface DiscordAdapterConfig {
-  enabled: boolean;
-  botToken: string;
-  taskChannelId: string;
-  guildId?: string;
+	enabled: boolean;
+	botToken: string;
+	taskChannelId: string;
+	guildId?: string;
+	adminUserId?: string;
 }
 
 export interface Config {
-  // NEW: Agent and Team definitions
-  agents: Record<string, AgentConfig>;
-  teams: Record<string, TeamConfig>;
-  
-  // Existing configs
-  models: Record<string, ModelConfig>;
-  pipeline: PipelineConfig;
-  costTracking: CostTrackingConfig;
-  adapters: {
-    filesystem: FileSystemAdapterConfig;
-    discord?: DiscordAdapterConfig;
-  };
-  pollingIntervalMs: number;
+	adapter?: "filesystem" | "discord";
+	team?: string;
+	agents: Record<string, AgentConfig>;
+	teams: Record<string, TeamConfig>;
+	models: Record<string, ModelConfig>;
+	pipeline: PipelineConfig;
+	costTracking: CostTrackingConfig;
+	adapters: {
+		filesystem: FileSystemAdapterConfig;
+		discord?: DiscordAdapterConfig;
+	};
+	pollingIntervalMs: number;
+}
+
+export type ReportEntity = "goal" | "task";
+
+export interface ReportOptions {
+	entity?: ReportEntity;
+	teamId?: string;
 }
 
 // Adapter Interface
@@ -184,13 +203,20 @@ export interface Adapter {
 	initialize(): Promise<void>;
 	fetchInputs(teamId?: string): Promise<string[]>;
 	claim(inputId: string, agentId: string): Promise<boolean>;
-	report(inputId: string, status: string, message: string): Promise<void>;
+	report(
+		inputId: string,
+		status: GoalStatus | TaskStatus,
+		message: string,
+		options?: ReportOptions,
+	): Promise<void>;
 	notify(message: string): Promise<void>;
 	getGoalsDir(teamId: string): string;
 	pollGoals(teamId?: string): Promise<Goal[]>;
 	requestClarification(goalId: string, question: string): Promise<void>;
 	setConfig(config: Config): void;
 }
+
+export type StageName = "parse" | "decompose" | "clarify" | "execute";
 
 // LLM Types
 export interface LLMUsage {
@@ -205,14 +231,14 @@ export interface LLMResponse {
 
 export interface LLMClient {
 	generate(
-		stage: string,
+		stage: StageName,
 		prompt: string,
 		options?: {
-			schema?: object;
+			schema?: unknown;
 			modelAlias?: string;
 		},
 	): Promise<LLMResponse>;
-	getModelForStage(stage: string): string;
+	getModelForStage(stage: StageName): string;
 }
 
 // Cost Tracking Types

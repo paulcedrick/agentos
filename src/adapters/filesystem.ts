@@ -5,7 +5,14 @@
 
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
-import type { Goal, Adapter, Config } from "../types/index.ts";
+import type {
+	Goal,
+	Adapter,
+	Config,
+	GoalStatus,
+	TaskStatus,
+	ReportOptions,
+} from "../types/index.ts";
 import { Logger } from "../utils/logger.ts";
 
 export interface FileSystemAdapterConfig {
@@ -19,7 +26,7 @@ export class FileSystemAdapter implements Adapter {
 	#config?: Config;
 
 	constructor(config: FileSystemAdapterConfig) {
-		this.#baseDir = config.baseDir.replace("~", process.env.HOME || "");
+		this.#baseDir = config.baseDir.replace("~", process.env["HOME"] || "");
 	}
 
 	setConfig(config: Config): void {
@@ -32,13 +39,18 @@ export class FileSystemAdapter implements Adapter {
 
 		// Create team subdirectories
 		if (this.#config) {
-			for (const [teamId, team] of Object.entries(this.#config.teams)) {
+			const teamIds = Object.keys(this.#config.teams);
+			for (const [, team] of Object.entries(this.#config.teams)) {
 				const teamDir = join(this.#baseDir, team.goalsDir);
 				await mkdir(teamDir, { recursive: true });
 
 				// Create done subdirectory for each team
 				await mkdir(join(teamDir, "done"), { recursive: true });
+				await mkdir(join(teamDir, "task-status"), { recursive: true });
 			}
+			this.#logger.info(
+				`Initialized ${teamIds.length} team directories under ${this.#baseDir}`,
+			);
 		}
 	}
 
@@ -100,6 +112,9 @@ export class FileSystemAdapter implements Adapter {
 			}
 		}
 
+		this.#logger.info(
+			`Polled ${teamId || "all teams"}: found ${goals.length} pending goals`,
+		);
 		return goals;
 	}
 
@@ -123,16 +138,20 @@ export class FileSystemAdapter implements Adapter {
 		}
 
 		return {
-			id: frontmatter.id || `goal-${Date.now()}`,
+			id: (frontmatter["id"] as string) || `goal-${Date.now()}`,
 			source: "filesystem",
-			sourceId: frontmatter.id || "unknown",
-			teamId: frontmatter.team || "unknown",
+			sourceId: (frontmatter["id"] as string) || "unknown",
+			teamId: (frontmatter["team"] as string) || "unknown",
 			description: body,
-			successCriteria: frontmatter.successCriteria?.split(",") || [],
-			priority: frontmatter.priority || "medium",
-			status: frontmatter.status || "pending",
-			createdBy: frontmatter.createdBy || "unknown",
-			createdAt: frontmatter.createdAt || new Date().toISOString(),
+			successCriteria:
+				typeof frontmatter["successCriteria"] === "string"
+					? (frontmatter["successCriteria"] as string).split(",")
+					: [],
+			priority: ((frontmatter["priority"] as Goal["priority"]) || "medium"),
+			status: ((frontmatter["status"] as Goal["status"]) || "pending"),
+			createdBy: (frontmatter["createdBy"] as string) || "unknown",
+			createdAt:
+				(frontmatter["createdAt"] as string) || new Date().toISOString(),
 			metadata: { frontmatter },
 		};
 	}
@@ -145,33 +164,62 @@ export class FileSystemAdapter implements Adapter {
 
 			try {
 				await writeFile(lockFile, agentId, { flag: "wx" });
+				this.#logger.info(`Claimed ${inputId} for agent=${agentId}`);
 				return true;
 			} catch {
 				// Lock exists, try next team or return false
 			}
 		}
+		this.#logger.warn(
+			`Failed to claim ${inputId} for agent=${agentId} (already locked)`,
+		);
 		return false;
 	}
 
 	async report(
 		inputId: string,
-		status: string,
+		status: GoalStatus | TaskStatus,
 		message?: string,
+		options?: ReportOptions,
 	): Promise<void> {
-		// Update the goal file with new status
+		const entity =
+			options?.entity || (inputId.includes("-task-") ? "task" : "goal");
+		if (entity === "task") {
+			const teamDir = await this.#findTeamDirForTask(inputId, options?.teamId);
+			if (!teamDir) {
+				this.#logger.warn(`Could not resolve team for task report: ${inputId}`);
+				return;
+			}
+
+			const taskStatusPath = join(teamDir, "task-status", `${inputId}.json`);
+			const payload = {
+				taskId: inputId,
+				status,
+				message: message || "",
+				updatedAt: new Date().toISOString(),
+			};
+			await writeFile(taskStatusPath, JSON.stringify(payload, null, 2));
+			this.#logger.info(`Report ${inputId}: task status → ${status}`);
+			return;
+		}
+
+		// Goal reports update source goal files
 		for (const teamId of Object.keys(this.#config?.teams || {})) {
 			const teamDir = this.getGoalsDir(teamId);
 			const goalFile = join(teamDir, `${inputId}.goal.md`);
 
 			try {
 				const content = await readFile(goalFile, "utf-8");
-				const updated = content.replace(/status:.*$/m, `status: ${status}`);
+				const updated = this.#replaceGoalStatus(content, status);
 				await writeFile(goalFile, updated);
+				this.#logger.info(`Report ${inputId}: status → ${status}`);
 				return;
 			} catch {
 				// File not in this team, continue
 			}
 		}
+
+		this.#logger.warn(`Goal file not found for report: ${inputId}`);
 	}
 
 	async notify(message: string): Promise<void> {
@@ -190,5 +238,45 @@ export class FileSystemAdapter implements Adapter {
 				// Continue to next team
 			}
 		}
+	}
+
+	#replaceGoalStatus(content: string, status: GoalStatus | TaskStatus): string {
+		if (/^status:.*$/m.test(content)) {
+			return content.replace(/^status:.*$/m, `status: ${status}`);
+		}
+
+		const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+		if (frontmatterMatch) {
+			const updatedFrontmatter = `---\n${frontmatterMatch[1]}\nstatus: ${status}\n---\n`;
+			return content.replace(/^---\n([\s\S]*?)\n---\n?/, updatedFrontmatter);
+		}
+
+		return `---\nstatus: ${status}\n---\n${content}`;
+	}
+
+	async #findTeamDirForTask(
+		taskId: string,
+		preferredTeamId?: string,
+	): Promise<string | null> {
+		const candidates = preferredTeamId
+			? [preferredTeamId, ...Object.keys(this.#config?.teams || {})]
+			: Object.keys(this.#config?.teams || {});
+
+		const goalId = taskId.split("-task-")[0];
+		for (const teamId of candidates) {
+			try {
+				const teamDir = this.getGoalsDir(teamId);
+				await readFile(join(teamDir, `${goalId}.goal.md`), "utf-8");
+				return teamDir;
+			} catch {
+				// Continue searching
+			}
+		}
+
+		if (candidates.length > 0) {
+			return this.getGoalsDir(candidates[0]);
+		}
+
+		return null;
 	}
 }

@@ -23,9 +23,15 @@ import { Pipeline } from "../src/core/pipeline.ts";
 // Mock LLM Client
 class MockLLMClient {
 	#responses: Map<string, any> = new Map();
+	#errors: Map<string, Error> = new Map();
 
 	setResponse(stage: string, response: any) {
 		this.#responses.set(stage, response);
+		this.#errors.delete(stage);
+	}
+
+	setError(stage: string, error: Error) {
+		this.#errors.set(stage, error);
 	}
 
 	async generate(
@@ -33,6 +39,11 @@ class MockLLMClient {
 		prompt: string,
 		options?: { schema?: object; modelAlias?: string },
 	): Promise<{ text: string; usage: { prompt: number; completion: number } }> {
+		const maybeError = this.#errors.get(stage);
+		if (maybeError) {
+			throw maybeError;
+		}
+
 		const response = this.#responses.get(stage);
 		if (!response) {
 			throw new Error(`No mock response set for stage: ${stage}`);
@@ -90,6 +101,7 @@ function createTestConfig(baseDir: string): Config {
 				provider: "minimax",
 				package: "@ai-sdk/minimax",
 				modelId: "MiniMax-M2.5",
+				baseUrl: "https://api.minimax.chat/v1",
 				apiKeyEnv: "MINIMAX_API_KEY",
 				pricing: { inputPer1k: 0.0015, outputPer1k: 0.006 },
 			},
@@ -97,6 +109,7 @@ function createTestConfig(baseDir: string): Config {
 				provider: "zhipu",
 				package: "@ai-sdk/zhipu",
 				modelId: "glm-4.7",
+				baseUrl: "https://open.bigmodel.cn/api/paas/v4",
 				apiKeyEnv: "ZHIPU_API_KEY",
 				pricing: { inputPer1k: 0.003, outputPer1k: 0.009 },
 			},
@@ -234,6 +247,11 @@ Tone: technical but accessible`;
 		const goalPath = join(goalsDir, "test.goal.md");
 		const updatedContent = readFileSync(goalPath, "utf-8");
 		expect(updatedContent).toContain("status: completed");
+
+		// Verify task status artifacts were written
+		const taskStatusPath = join(goalsDir, "task-status", "test-task-1.json");
+		const taskStatus = JSON.parse(readFileSync(taskStatusPath, "utf-8"));
+		expect(taskStatus.status).toBe("completed");
 	});
 
 	test("asks for clarification when goal is unclear", async () => {
@@ -337,5 +355,76 @@ Test goal ${i + 1} description.`;
 			const content = readFileSync(goalPath, "utf-8");
 			expect(content).toContain("status: completed");
 		}
+	});
+
+	test("blocks dependent tasks when dependency fails", async () => {
+		const goalContent = `---
+id: dep-fail
+team: team-1
+status: pending
+---
+# Dependency failure goal
+
+Ensure downstream task is blocked when dependency fails.`;
+
+		writeFileSync(join(goalsDir, "dep-fail.goal.md"), goalContent);
+
+		mockLLM.setResponse("parse", {
+			description: "Dependency failure goal",
+			successCriteria: ["downstream task is blocked"],
+			priority: "high",
+		});
+
+		mockLLM.setResponse("clarify", {
+			isClearEnough: true,
+			confidence: 90,
+			questions: [],
+		});
+
+		mockLLM.setResponse("decompose", {
+			tasks: [
+				{
+					description: "Run first task that fails",
+					type: "research",
+					requiredCapabilities: ["research"],
+					estimatedEffort: "30 minutes",
+					dependencies: [],
+				},
+				{
+					description: "Run second task after first",
+					type: "write",
+					requiredCapabilities: ["writing"],
+					estimatedEffort: "30 minutes",
+					dependencies: [0],
+				},
+			],
+			strategy: "fail first task then block second",
+		});
+
+		mockLLM.setError("execute", new Error("Synthetic execution failure"));
+
+		await pipeline.runCycle();
+
+		const taskOneStatusPath = join(
+			goalsDir,
+			"task-status",
+			"dep-fail-task-1.json",
+		);
+		const taskTwoStatusPath = join(
+			goalsDir,
+			"task-status",
+			"dep-fail-task-2.json",
+		);
+
+		const taskOneStatus = JSON.parse(readFileSync(taskOneStatusPath, "utf-8"));
+		const taskTwoStatus = JSON.parse(readFileSync(taskTwoStatusPath, "utf-8"));
+
+		expect(taskOneStatus.status).toBe("failed");
+		expect(taskTwoStatus.status).toBe("blocked");
+		expect(taskTwoStatus.message).toContain("Blocked by dependency");
+
+		const goalPath = join(goalsDir, "dep-fail.goal.md");
+		const updatedGoal = readFileSync(goalPath, "utf-8");
+		expect(updatedGoal).toContain("status: failed");
 	});
 });

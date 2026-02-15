@@ -27,7 +27,7 @@ export class Logger {
 	}
 
 	debug(message: string, meta?: Record<string, any>): void {
-		if (process.env.DEBUG) {
+		if (process.env["DEBUG"]) {
 			console.log(
 				`[${new Date().toISOString()}] [DEBUG] [${this.#context}] ${message}`,
 				meta || "",

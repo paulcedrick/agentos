@@ -2,7 +2,14 @@
  * Execute Stage - Execute a Task and produce results
  */
 
-import type { Goal, Task, TaskResult, LLMClient } from "../types/index.ts";
+import type {
+	Goal,
+	Task,
+	TaskResult,
+	LLMClient,
+	ExecutePipelineStageConfig,
+} from "../types/index.ts";
+import { Logger } from "../utils/logger.ts";
 
 export interface ExecuteStage {
 	run(task: Task, goal: Goal): Promise<TaskResult>;
@@ -10,13 +17,21 @@ export interface ExecuteStage {
 
 export class LLMExecuteStage implements ExecuteStage {
 	#llm: LLMClient;
+	#config: ExecutePipelineStageConfig;
+	#logger = new Logger("ExecuteStage");
 
-	constructor(llm: LLMClient) {
+	constructor(llm: LLMClient, config: ExecutePipelineStageConfig) {
 		this.#llm = llm;
+		this.#config = config;
 	}
 
 	async run(task: Task, goal: Goal): Promise<TaskResult> {
 		const startTime = Date.now();
+		const modelAlias = this.#selectModelForTaskType(task.type);
+
+		this.#logger.info(
+			`Starting execute task=${task.id}, type=${task.type}, model=${modelAlias || "default"}`,
+		);
 
 		const prompt = `Execute this task and provide results.
 
@@ -39,32 +54,35 @@ Execute the task and provide:
 
 Be specific and actionable in your response.`;
 
-		// Use task type to determine model (code tasks need better models)
-		const modelAlias = this.#selectModelForTaskType(task.type);
+		let result;
+		try {
+			result = await this.#llm.generate("execute", prompt, {
+				modelAlias,
+			});
+		} catch (error) {
+			this.#logger.error(`Execute failed for task=${task.id}`, error);
+			throw error;
+		}
 
-		const result = await this.#llm.generate("execute", prompt, {
-			modelAlias,
-		});
+		const durationMs = Date.now() - startTime;
+		const duration = Math.floor(durationMs / 60000); // minutes
+		const tokens = result.usage.prompt + result.usage.completion;
 
-		const duration = Math.floor((Date.now() - startTime) / 60000); // minutes
+		this.#logger.info(
+			`Completed task=${task.id} in ${durationMs}ms, tokens=${tokens}`,
+		);
 
 		return {
 			summary: result.text,
 			artifacts: [], // TODO: Extract artifacts from result
 			metrics: {
 				durationMinutes: duration,
-				tokensUsed: result.usage.prompt + result.usage.completion,
+				tokensUsed: tokens,
 			},
 		};
 	}
 
 	#selectModelForTaskType(type: Task["type"]): string | undefined {
-		// Higher quality models for complex tasks
-		const highQualityTypes = ["code", "design", "architecture"];
-		if (highQualityTypes.includes(type)) {
-			return "kimi-k2"; // Use best model
-		}
-		// Let pipeline config decide for others
-		return undefined;
+		return this.#config.byType?.[type] || this.#config.default;
 	}
 }

@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { Goal, Task, LLMClient } from "../types/index.ts";
+import { Logger } from "../utils/logger.ts";
 
 const TaskSchema = z.object({
 	description: z.string().describe("Specific, actionable task description"),
@@ -42,12 +43,17 @@ export interface DecomposeStage {
 
 export class LLMDecomposeStage implements DecomposeStage {
 	#llm: LLMClient;
+	#logger = new Logger("DecomposeStage");
 
 	constructor(llm: LLMClient) {
 		this.#llm = llm;
 	}
 
 	async run(goal: Goal): Promise<Task[]> {
+		this.#logger.info(
+			`Starting decompose for goal=${goal.id}: ${goal.description.slice(0, 80)}`,
+		);
+
 		const prompt = `Decompose this goal into executable tasks.
 
 Goal: ${goal.description}
@@ -69,10 +75,13 @@ Strategy: Start with research/planning tasks, then implementation, then review.`
 			schema: DecompositionSchema,
 		});
 
+		this.#logger.debug("LLM call complete", { textLength: result.text.length });
+
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(result.text);
-		} catch {
+		} catch (error) {
+			this.#logger.error(`Invalid JSON from LLM for goal=${goal.id}`, error);
 			throw new Error(
 				`Decompose stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
 			);
@@ -83,18 +92,24 @@ Strategy: Start with research/planning tasks, then implementation, then review.`
 		const tasks: Task[] = validated.tasks.map((t, index) => ({
 			id: `${goal.id}-task-${index + 1}`,
 			goalId: goal.id,
+			teamId: goal.teamId,
 			description: t.description,
 			type: t.type,
 			requiredCapabilities: t.requiredCapabilities,
 			estimatedEffort: t.estimatedEffort,
 			status: "pending",
+			order: index,
 			dependencies:
 				t.dependencies?.map((d) => `${goal.id}-task-${d + 1}`) || [],
 			metadata: {
 				rationale: validated.strategy,
-				order: index,
 			},
 		}));
+
+		const types = tasks.map((t) => t.type).join(", ");
+		this.#logger.info(
+			`Decomposed goal=${goal.id}: ${tasks.length} tasks [${types}]`,
+		);
 
 		return tasks;
 	}

@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { Goal, Task, LLMClient } from "../types/index.ts";
+import { Logger } from "../utils/logger.ts";
 
 const ClarificationSchema = z.object({
 	isClearEnough: z.boolean(),
@@ -37,12 +38,15 @@ export interface ClarifyStage {
 
 export class LLMClarifyStage implements ClarifyStage {
 	#llm: LLMClient;
+	#logger = new Logger("ClarifyStage");
 
 	constructor(llm: LLMClient) {
 		this.#llm = llm;
 	}
 
 	async shouldAsk(goal: Goal): Promise<ClarificationResult> {
+		this.#logger.info(`Clarifying goal=${goal.id} (goal-level)`);
+
 		const prompt = `Analyze this goal for clarity.
 
 Goal: ${goal.description}
@@ -64,7 +68,8 @@ For each issue, determine if it's blocking (can't proceed without answer) or non
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(result.text);
-		} catch {
+		} catch (error) {
+			this.#logger.error(`Invalid JSON from LLM for goal=${goal.id}`, error);
 			throw new Error(
 				`Clarify stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
 			);
@@ -74,6 +79,10 @@ For each issue, determine if it's blocking (can't proceed without answer) or non
 		const hasBlocking = validated.questions.some((q) => q.blocking);
 		const blocking =
 			!validated.isClearEnough || validated.confidence < 60 || hasBlocking;
+
+		this.#logger.info(
+			`Clarify goal=${goal.id}: confidence=${validated.confidence}, questions=${validated.questions.length}, blocking=${blocking}`,
+		);
 
 		return {
 			shouldAsk: validated.questions.length > 0,
@@ -88,6 +97,8 @@ For each issue, determine if it's blocking (can't proceed without answer) or non
 	}
 
 	async shouldAskForTask(task: Task, goal: Goal): Promise<ClarificationResult> {
+		this.#logger.info(`Clarifying task=${task.id} (task-level)`);
+
 		const prompt = `Analyze this task for clarity.
 
 Task: ${task.description}
@@ -105,7 +116,8 @@ Is this task clear enough to execute? What, if anything, is missing or ambiguous
 		let parsed2: unknown;
 		try {
 			parsed2 = JSON.parse(result.text);
-		} catch {
+		} catch (error) {
+			this.#logger.error(`Invalid JSON from LLM for task=${task.id}`, error);
 			throw new Error(
 				`Clarify stage: LLM returned invalid JSON: ${result.text.slice(0, 200)}`,
 			);
@@ -115,6 +127,10 @@ Is this task clear enough to execute? What, if anything, is missing or ambiguous
 		const hasBlocking = validated.questions.some((q) => q.blocking);
 		const blocking =
 			!validated.isClearEnough || validated.confidence < 60 || hasBlocking;
+
+		this.#logger.info(
+			`Clarify task=${task.id}: confidence=${validated.confidence}, questions=${validated.questions.length}, blocking=${blocking}`,
+		);
 
 		return {
 			shouldAsk: validated.questions.length > 0,

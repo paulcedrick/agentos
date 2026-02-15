@@ -26,17 +26,15 @@ export class Pipeline {
 	#logger: Logger;
 	#config: Config;
 	#adapter: Adapter;
-	#llm: LLMClient;
 
 	constructor(config: Config, adapter: Adapter, llm: LLMClient) {
 		this.#config = config;
 		this.#adapter = adapter;
-		this.#llm = llm;
 		this.#stateMachine = new StateMachine();
 		this.#parseStage = new LLMParseStage(llm);
 		this.#decomposeStage = new LLMDecomposeStage(llm);
 		this.#clarifyStage = new LLMClarifyStage(llm);
-		this.#executeStage = new LLMExecuteStage(llm);
+		this.#executeStage = new LLMExecuteStage(llm, config.pipeline.execute);
 		this.#logger = new Logger("Pipeline");
 	}
 
@@ -70,6 +68,12 @@ export class Pipeline {
 			if (clarification.blocking) {
 				this.#logger.info(`[${goal.id}] Blocking clarification needed`);
 				await this.#requestClarification(goal, clarification.questions);
+				await this.#adapter.report(
+					goal.id,
+					"blocked",
+					"Blocking clarification required",
+					{ entity: "goal", teamId: goal.teamId },
+				);
 				return;
 			}
 
@@ -77,27 +81,142 @@ export class Pipeline {
 			this.#logger.info(`[${goal.id}] Decomposing...`);
 			const tasks = await this.#decomposeStage.run(parsedGoal);
 
-			// Assign teamId to each task
-			for (const task of tasks) {
-				task.teamId = goal.teamId;
-			}
-
 			this.#logger.info(`[${goal.id}] Created ${tasks.length} tasks`);
 
-			// STAGE 4: EXECUTE tasks (with agent matching)
-			for (const task of tasks) {
-				await this.#executeTaskWithAgentMatching(task, parsedGoal);
+			// STAGE 4: EXECUTE tasks (dependency-aware with agent matching)
+			const executionSummary = await this.#executeTasksWithDependencies(
+				tasks,
+				parsedGoal,
+			);
+
+			if (executionSummary.failed > 0) {
+				await this.#adapter.report(
+					goal.id,
+					"failed",
+					`${executionSummary.failed} task(s) failed, ${executionSummary.completed} completed`,
+					{ entity: "goal", teamId: goal.teamId },
+				);
+				return;
+			}
+
+			if (executionSummary.blocked > 0) {
+				await this.#adapter.report(
+					goal.id,
+					"blocked",
+					`${executionSummary.blocked} task(s) blocked, ${executionSummary.completed} completed`,
+					{ entity: "goal", teamId: goal.teamId },
+				);
+				return;
 			}
 
 			this.#logger.info(`[${goal.id}] Completed`);
-			await this.#adapter.report(goal.id, "completed", "All tasks completed");
+			await this.#adapter.report(goal.id, "completed", "All tasks completed", {
+				entity: "goal",
+				teamId: goal.teamId,
+			});
 		} catch (error) {
 			this.#logger.error(`[${goal.id}] Failed`, error);
-			await this.#adapter.report(goal.id, "failed", String(error));
+			await this.#adapter.report(goal.id, "failed", String(error), {
+				entity: "goal",
+				teamId: goal.teamId,
+			});
 		}
 	}
 
-	async #executeTaskWithAgentMatching(task: Task, goal: Goal): Promise<void> {
+	async #executeTasksWithDependencies(
+		tasks: Task[],
+		goal: Goal,
+	): Promise<{ completed: number; failed: number; blocked: number }> {
+		const allTaskIds = new Set(tasks.map((task) => task.id));
+		const remaining = new Map(tasks.map((task) => [task.id, task]));
+		const completed = new Set<string>();
+		const failed = new Set<string>();
+		const blocked = new Set<string>();
+
+		while (remaining.size > 0) {
+			let progressed = false;
+
+			for (const [taskId, task] of Array.from(remaining.entries())) {
+				const unknownDependencies = task.dependencies.filter(
+					(dependencyId) => !allTaskIds.has(dependencyId),
+				);
+				if (unknownDependencies.length > 0) {
+					await this.#adapter.report(
+						task.id,
+						"blocked",
+						`Unknown dependencies: ${unknownDependencies.join(", ")}`,
+						{ entity: "task", teamId: goal.teamId },
+					);
+					blocked.add(task.id);
+					remaining.delete(taskId);
+					progressed = true;
+					continue;
+				}
+
+				const blockedDependencies = task.dependencies.filter(
+					(dependencyId) =>
+						failed.has(dependencyId) || blocked.has(dependencyId),
+				);
+				if (blockedDependencies.length > 0) {
+					await this.#adapter.report(
+						task.id,
+						"blocked",
+						`Blocked by dependency: ${blockedDependencies.join(", ")}`,
+						{ entity: "task", teamId: goal.teamId },
+					);
+					blocked.add(task.id);
+					remaining.delete(taskId);
+					progressed = true;
+					continue;
+				}
+
+				const waitingDependencies = task.dependencies.filter(
+					(dependencyId) => !completed.has(dependencyId),
+				);
+				if (waitingDependencies.length > 0) {
+					continue;
+				}
+
+				const status = await this.#executeTaskWithAgentMatching(task, goal);
+				if (status === "completed") {
+					completed.add(task.id);
+				} else if (status === "failed") {
+					failed.add(task.id);
+				} else {
+					blocked.add(task.id);
+				}
+				remaining.delete(taskId);
+				progressed = true;
+			}
+
+			if (!progressed) {
+				for (const task of remaining.values()) {
+					const unresolved = task.dependencies.filter(
+						(dependencyId) => !completed.has(dependencyId),
+					);
+					await this.#adapter.report(
+						task.id,
+						"blocked",
+						`Unresolvable dependencies: ${unresolved.join(", ") || "none"}`,
+						{ entity: "task", teamId: goal.teamId },
+					);
+					blocked.add(task.id);
+				}
+				break;
+			}
+		}
+
+		return {
+			completed: completed.size,
+			failed: failed.size,
+			blocked: blocked.size,
+		};
+	}
+
+	async #executeTaskWithAgentMatching(
+		task: Task,
+		goal: Goal,
+	): Promise<"completed" | "failed" | "blocked"> {
 		// Find best agent for this task based on capabilities
 		const agent = this.#findBestAgent(task, goal.teamId);
 
@@ -109,8 +228,9 @@ export class Pipeline {
 				task.id,
 				"blocked",
 				`No agent available for capabilities: ${task.requiredCapabilities.join(", ")}`,
+				{ entity: "task", teamId: goal.teamId },
 			);
-			return;
+			return "blocked";
 		}
 
 		this.#logger.info(`[${task.id}] Assigning to agent: ${agent.name}`);
@@ -121,34 +241,74 @@ export class Pipeline {
 			goal,
 		);
 		if (taskClarification.blocking) {
-			await this.#adapter.report(task.id, "blocked", "Needs clarification");
-			return;
+			await this.#adapter.report(task.id, "blocked", "Needs clarification", {
+				entity: "task",
+				teamId: goal.teamId,
+			});
+			return "blocked";
 		}
 
 		// Claim task for this agent
 		const claimed = await this.#adapter.claim(task.id, agent.id);
 		if (!claimed) {
 			this.#logger.info(`[${task.id}] Already claimed`);
-			return;
+			return "blocked";
 		}
 
-		// Execute
-		this.#stateMachine.transition(task, "in_progress");
+		const claimedTransition = this.#stateMachine.transition(task, "claimed");
+		if (!claimedTransition.success) {
+			throw new Error(
+				`[${task.id}] Failed to transition to claimed: ${claimedTransition.error}`,
+			);
+		}
+
+		const inProgressTransition = this.#stateMachine.transition(
+			task,
+			"in_progress",
+		);
+		if (!inProgressTransition.success) {
+			throw new Error(
+				`[${task.id}] Failed to transition to in_progress: ${inProgressTransition.error}`,
+			);
+		}
 		await this.#adapter.report(
 			task.id,
 			"in_progress",
 			`Assigned to ${agent.name}`,
+			{ entity: "task", teamId: goal.teamId },
 		);
 
 		try {
 			const result = await this.#executeStage.run(task, goal);
+			task.result = result;
 
-			this.#stateMachine.transition(task, "completed");
-			await this.#adapter.report(task.id, "completed", result.summary);
+			const completedTransition = this.#stateMachine.transition(
+				task,
+				"completed",
+			);
+			if (!completedTransition.success) {
+				throw new Error(
+					`[${task.id}] Failed to transition to completed: ${completedTransition.error}`,
+				);
+			}
+			await this.#adapter.report(task.id, "completed", result.summary, {
+				entity: "task",
+				teamId: goal.teamId,
+			});
+			return "completed";
 		} catch (error) {
 			this.#logger.error(`[${task.id}] Execution failed`, error);
-			this.#stateMachine.transition(task, "failed");
-			await this.#adapter.report(task.id, "failed", String(error));
+			const failedTransition = this.#stateMachine.transition(task, "failed");
+			if (!failedTransition.success) {
+				this.#logger.warn(
+					`[${task.id}] Failed to transition task to failed state`,
+				);
+			}
+			await this.#adapter.report(task.id, "failed", String(error), {
+				entity: "task",
+				teamId: goal.teamId,
+			});
+			return "failed";
 		}
 	}
 
